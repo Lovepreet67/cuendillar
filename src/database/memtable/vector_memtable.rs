@@ -12,22 +12,16 @@ where
     store: Vec<K>,
 }
 
-impl<K> VectorMemtable<K>
-where
-    K: Entry,
-{
-    pub fn new(id: Option<Uuid>) -> Self {
-        Self {
-            id: id.unwrap_or(uuid::Uuid::new_v4()),
-            store: Vec::new(),
-        }
-    }
-}
-
 impl<K> Memtable<K> for VectorMemtable<K>
 where
     K: Entry,
 {
+    fn new(id: Option<Uuid>) -> Self {
+        Self {
+            id: id.unwrap_or_else(|| Uuid::new_v4()),
+            store: Vec::new(),
+        }
+    }
     fn get_id(&self) -> &Uuid {
         &self.id
     }
@@ -55,6 +49,12 @@ where
             memtable: self,
             key_set: HashSet::default(),
         }
+    }
+    fn num_enteries(&self) -> u64 {
+        self.store.len() as u64
+    }
+    fn size(&self) -> u64 {
+        (self.store.len() * std::mem::size_of::<K>()) as u64
     }
 }
 

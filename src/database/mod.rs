@@ -6,3 +6,4 @@ mod sstable;
 #[cfg(test)]
 mod tests;
 mod wal;
+mod writer;

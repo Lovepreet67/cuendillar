@@ -11,8 +11,8 @@ pub struct DefaultWALWriter {
     wal_dir: PathBuf,
     metadata_file: File,
 }
-impl DefaultWALWriter {
-    pub fn new(wal_dir: PathBuf) -> Result<Self, std::io::Error> {
+impl WALWriter for DefaultWALWriter {
+    fn new(wal_dir: PathBuf) -> Result<Self, std::io::Error> {
         if !wal_dir.exists() {
             create_dir_all(&wal_dir)?;
         }
@@ -28,8 +28,8 @@ impl DefaultWALWriter {
             active_log: None,
         })
     }
-    pub fn new_log_file(&mut self) -> Result<String, std::io::Error> {
-        let new_log_file_id = format!("{}.wal", uuid::Uuid::new_v4());
+    fn rotate(&mut self, id: Option<uuid::Uuid>) -> Result<(), std::io::Error> {
+        let new_log_file_id = format!("{}.wal", id.unwrap_or_else(|| uuid::Uuid::new_v4()));
         let new_log_file_path = self.wal_dir.join(&new_log_file_id);
         let new_log_file = File::options()
             .create_new(true)
@@ -41,20 +41,15 @@ impl DefaultWALWriter {
         self.metadata_file.write_all(new_log_file_id.as_bytes())?;
         self.metadata_file.write_all("\n".as_bytes())?;
         self.active_log = Some(new_log_file);
-        Ok(new_log_file_id)
+        Ok(())
     }
-}
-impl WALWriter for DefaultWALWriter {
     fn append(
         &mut self,
         entry: WALEntry,
     ) -> Result<(), crate::database::wal::errors::WALWriteError> {
-        let mut log_id = None;
-        if self.active_log.is_none() {
-            log_id = Some(self.new_log_file()?);
-        }
+        assert!(self.active_log.is_some());
         let active_log = self.active_log.as_mut().unwrap();
-        active_log.write_all(entry.payload)?;
+        active_log.write_all(entry.payload.as_slice())?;
         active_log.sync_data()?;
         Ok(())
     }
