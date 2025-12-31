@@ -1,4 +1,4 @@
-use crate::database::memtable::{Entry, Memtable};
+use crate::database::{common::Entry, memtable::Memtable};
 mod default_sstable;
 #[cfg(test)]
 mod tests;

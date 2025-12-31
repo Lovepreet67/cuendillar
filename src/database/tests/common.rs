@@ -1,6 +1,7 @@
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
-use crate::database::memtable::Entry;
+use crate::database::common::Entry;
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct Entity {
     id: String,

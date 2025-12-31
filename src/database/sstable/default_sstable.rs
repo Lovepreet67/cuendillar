@@ -3,10 +3,7 @@ use std::{
     path::PathBuf,
 };
 
-use crate::database::{
-    memtable::{Entry, Memtable},
-    sstable::SSTable,
-};
+use crate::database::{common::Entry, memtable::Memtable, sstable::SSTable};
 
 pub struct DefaultSSTable {
     root_dir: PathBuf,
