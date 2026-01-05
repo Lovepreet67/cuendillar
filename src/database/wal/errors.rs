@@ -1,16 +1,15 @@
-pub enum WALWriteError {
+#[derive(Debug)]
+pub enum WALError {
     IOError(std::io::Error),
+    CrrouptedMetadataFile(String),
 }
-impl From<std::io::Error> for WALWriteError {
+impl From<std::io::Error> for WALError {
     fn from(value: std::io::Error) -> Self {
-        WALWriteError::IOError(value)
+        WALError::IOError(value)
     }
 }
-pub enum WALReaderError {
-    IOError(std::io::Error),
-}
-impl From<std::io::Error> for WALReaderError {
-    fn from(value: std::io::Error) -> Self {
-        WALReaderError::IOError(value)
+impl From<uuid::Error> for WALError {
+    fn from(value: uuid::Error) -> WALError {
+        WALError::CrrouptedMetadataFile(value.to_string())
     }
 }

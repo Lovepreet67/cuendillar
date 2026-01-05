@@ -2,20 +2,63 @@ use std::collections::HashSet;
 
 use uuid::Uuid;
 
-use crate::database::memtable::{Entry, Memtable, errors::MemtableError};
-
-pub struct VectorMemtable<K>
-where
-    K: Entry,
-{
-    id: Uuid,
-    store: Vec<K>,
+use crate::database::{
+    Entry,
+    memtable::{Memtable, errors::MemtableError},
+};
+pub struct VectorMemtableEntry {
+    key: Vec<u8>,
+    value: Option<Vec<u8>>,
 }
 
-impl<K> Memtable<K> for VectorMemtable<K>
-where
-    K: Entry,
-{
+impl VectorMemtableEntry {
+    pub fn get_key(&self) -> &[u8] {
+        &self.key
+    }
+    pub fn is_deleted(&self) -> bool {
+        self.value.is_none()
+    }
+    pub fn size(&self) -> usize {
+        self.key.len()
+            + match &self.value {
+                Some(val) => val.len(),
+                None => 0,
+            }
+    }
+}
+
+impl From<Entry<'_>> for VectorMemtableEntry {
+    fn from(value: Entry) -> Self {
+        return match value {
+            Entry::Row { key, value } => Self {
+                key: key.into(),
+                value: Some(value.into()),
+            },
+            Entry::Tombstore { key } => Self {
+                key: key.into(),
+                value: None,
+            },
+        };
+    }
+}
+impl<'a> From<&'a VectorMemtableEntry> for Entry<'a> {
+    fn from(value: &'a VectorMemtableEntry) -> Self {
+        if value.is_deleted() {
+            return Entry::Tombstore { key: &value.key };
+        } else {
+            return Entry::Row {
+                key: &value.key,
+                value: value.value.as_deref().unwrap(),
+            };
+        }
+    }
+}
+pub struct VectorMemtable {
+    id: Uuid,
+    store: Vec<VectorMemtableEntry>,
+}
+
+impl Memtable for VectorMemtable {
     fn new(id: Option<Uuid>) -> Self {
         Self {
             id: id.unwrap_or_else(|| Uuid::new_v4()),
@@ -25,25 +68,21 @@ where
     fn get_id(&self) -> &Uuid {
         &self.id
     }
-    fn insert(&mut self, e: K) {
-        self.store.push(e);
+    fn insert(&mut self, e: Entry) {
+        self.store.push(e.into());
     }
-    fn delete(&mut self, mut e: K) {
-        e.mark_deleted();
-        self.store.push(e);
-    }
-    fn find(&self, key: &[u8]) -> Result<&K, MemtableError> {
+    fn find(&self, key: &[u8]) -> Result<Entry, MemtableError> {
         for element in self.store.iter().rev() {
             if element.get_key() == key {
                 if element.is_deleted() {
                     return Err(MemtableError::Deleted);
                 }
-                return Ok(element);
+                return Ok(element.into());
             }
         }
         return Err(MemtableError::NotFound);
     }
-    fn iter(&self) -> impl std::iter::Iterator<Item = &K> {
+    fn iter(&self) -> impl std::iter::Iterator<Item = Entry<'_>> {
         VectorMemtableIterator {
             curr: self.store.len(),
             memtable: self,
@@ -54,23 +93,21 @@ where
         self.store.len() as u64
     }
     fn size(&self) -> u64 {
-        (self.store.len() * std::mem::size_of::<K>()) as u64
+        let mut totalSize = 0;
+        for i in &self.store {
+            totalSize += i.size();
+        }
+        totalSize as u64
     }
 }
 
-pub(crate) struct VectorMemtableIterator<'a, K>
-where
-    K: Entry,
-{
-    memtable: &'a VectorMemtable<K>,
+pub(crate) struct VectorMemtableIterator<'a> {
+    memtable: &'a VectorMemtable,
     curr: usize,
     key_set: HashSet<&'a [u8]>,
 }
-impl<'a, K> Iterator for VectorMemtableIterator<'a, K>
-where
-    K: Entry,
-{
-    type Item = &'a K;
+impl<'a> Iterator for VectorMemtableIterator<'a> {
+    type Item = Entry<'a>;
     fn next(&mut self) -> Option<Self::Item> {
         while self.curr > 0 {
             self.curr -= 1;
@@ -79,7 +116,7 @@ where
                 continue;
             }
             self.key_set.insert(curr_entry.get_key());
-            return Some(curr_entry);
+            return Some(curr_entry.into());
         }
         return None;
     }

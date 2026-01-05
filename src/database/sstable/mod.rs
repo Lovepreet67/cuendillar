@@ -1,12 +1,9 @@
-use crate::database::{common::Entry, memtable::Memtable};
+use crate::database::{OwnedEntry, memtable::Memtable};
 mod default_sstable;
 #[cfg(test)]
 mod tests;
 
 pub trait SSTable {
-    fn push_memtable<K: Entry, T: Memtable<K>>(&mut self, mt: &T) -> Result<(), std::io::Error>;
-    fn build_memtable<K: Entry, T: Memtable<K>>(
-        &mut self,
-        id: &uuid::Uuid,
-    ) -> Result<Vec<K>, std::io::Error>;
+    fn push_memtable(&mut self, mt: &impl Memtable) -> Result<(), std::io::Error>;
+    fn build_memtable(&mut self, id: &uuid::Uuid) -> Result<Vec<OwnedEntry>, std::io::Error>;
 }

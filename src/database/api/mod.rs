@@ -1,24 +1,14 @@
-use std::marker::PhantomData;
+use crate::database::{Entry, errors::DatabaseError};
 
-use crate::database::{common::Entry, errors::DatabaseError};
-
-pub struct Database<T>
-where
-    T: Entry,
-{
-    x: PhantomData<T>,
-}
-impl<T> Database<T>
-where
-    T: Entry,
-{
+pub struct Database {}
+impl Database {
     pub fn write() -> Result<(), DatabaseError> {
         // write to wal
         // write to memtable
         // done
         Ok(())
     }
-    pub fn read(key: &[u8]) -> Result<T, DatabaseError> {
+    pub fn read(key: &[u8]) -> Result<Entry, DatabaseError> {
         // read from active memtable
         // read from immutable memtable
         // read from sstables

@@ -1,43 +1,70 @@
+use crate::database::Entry;
+use crate::database::memtable::Memtable;
 use crate::database::memtable::errors::MemtableError;
-use crate::database::memtable::{Entry, Memtable};
-use crate::database::tests::common::Entity;
 
 mod vector_memtable_test;
 
-pub fn memtable_test_insert_and_find(memtable: &mut impl Memtable<Entity>) {
-    memtable.insert(Entity::new("id1", "name1", 4));
-    memtable.insert(Entity::new("id2", "name2", 4));
-    memtable.insert(Entity::new("id3", "name3", 4));
+pub fn memtable_test_insert_and_find(memtable: &mut impl Memtable) {
+    memtable.insert(Entry::Row {
+        key: b"id1",
+        value: b"value1",
+    });
+    memtable.insert(Entry::Row {
+        key: b"id2",
+        value: b"value2",
+    });
+    memtable.insert(Entry::Row {
+        key: b"id3",
+        value: b"value3",
+    });
     assert_eq!(
-        memtable.find("id1".as_bytes()).unwrap(),
-        &Entity::new("id1", "name1", 4)
+        memtable.find(b"id1").unwrap(),
+        Entry::Row {
+            key: b"id1",
+            value: b"value1",
+        }
     );
     assert_eq!(
         memtable.find("id2".as_bytes()).unwrap(),
-        &Entity::new("id2", "name2", 4)
+        Entry::Row {
+            key: b"id2",
+            value: b"value2",
+        }
     );
     assert_eq!(
         memtable.find("id3".as_bytes()).unwrap(),
-        &Entity::new("id3", "name3", 4)
+        Entry::Row {
+            key: b"id3",
+            value: b"value3",
+        }
     );
 }
 
 // TODO: update this test after updating the delete api
-pub fn memtable_test_delete(memtable: &mut impl Memtable<Entity>) {
-    memtable.insert(Entity::new("id1", "name1", 4));
-    memtable.insert(Entity::new("id2", "name2", 4));
+pub fn memtable_test_delete(memtable: &mut impl Memtable) {
+    memtable.insert(Entry::Row {
+        key: b"id1",
+        value: b"value1",
+    });
+    memtable.insert(Entry::Row {
+        key: b"id2",
+        value: b"value2",
+    });
     assert_eq!(
-        memtable.find("id1".as_bytes()).unwrap(),
-        &Entity::new("id1", "name1", 4)
+        memtable.find(b"id1").unwrap(),
+        Entry::Row {
+            key: b"id1",
+            value: b"value1",
+        }
     );
     assert_eq!(
         memtable.find("id2".as_bytes()).unwrap(),
-        &Entity::new("id2", "name2", 4)
+        Entry::Row {
+            key: b"id2",
+            value: b"value2",
+        }
     );
-    let mut id2_deleted = Entity::new("id2", "name2", 4);
-
-    id2_deleted.mark_deleted();
-    memtable.insert(id2_deleted);
+    memtable.insert(Entry::Tombstore { key: b"id2" });
     assert!(
         memtable
             .find("id2".as_bytes())
@@ -45,18 +72,43 @@ pub fn memtable_test_delete(memtable: &mut impl Memtable<Entity>) {
     );
 }
 
-pub fn memtable_test_iterator(memtable: &mut impl Memtable<Entity>) {
-    memtable.insert(Entity::new("id1", "name1", 4));
-    memtable.insert(Entity::new("id2", "name2", 4));
-    memtable.insert(Entity::new("id3", "name3", 4));
+pub fn memtable_test_iterator(memtable: &mut impl Memtable) {
+    memtable.insert(Entry::Row {
+        key: b"id1",
+        value: b"value1",
+    });
+    memtable.insert(Entry::Row {
+        key: b"id2",
+        value: b"value2",
+    });
+    memtable.insert(Entry::Row {
+        key: b"id3",
+        value: b"value3",
+    });
+    assert_eq!(
+        memtable.find(b"id1").unwrap(),
+        Entry::Row {
+            key: b"id1",
+            value: b"value1",
+        }
+    );
     // testing iterator
-    let items = memtable.iter().collect::<Vec<&Entity>>();
+    let items = memtable.iter().collect::<Vec<Entry>>();
     assert_eq!(
         items,
         vec![
-            &Entity::new("id3", "name3", 4),
-            &Entity::new("id2", "name2", 4),
-            &Entity::new("id1", "name1", 4),
+            Entry::Row {
+                key: b"id3",
+                value: b"value3",
+            },
+            Entry::Row {
+                key: b"id2",
+                value: b"value2",
+            },
+            Entry::Row {
+                key: b"id1",
+                value: b"value1",
+            },
         ]
     )
 }

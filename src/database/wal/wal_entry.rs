@@ -1,16 +1,16 @@
-use crate::database::common::Entry;
+use crate::database::{Entry, OwnedEntry};
 
 #[derive(Default)]
 pub struct WALEntry {
     pub payload: Vec<u8>,
 }
 impl WALEntry {
-    pub fn from_entry<T: Entry>(entry: &T) -> Self {
+    pub fn from_entry(entry: Entry) -> Self {
         let mut buff = Vec::new();
         entry.encode(&mut buff);
         Self { payload: buff }
     }
-    pub fn to_entry<T: Entry>(&mut self) -> Result<T, std::io::Error> {
-        T::decode(&mut self.payload.as_slice())
+    pub fn to_entry(&mut self) -> Result<OwnedEntry, std::io::Error> {
+        OwnedEntry::decode(&mut self.payload.as_slice())
     }
 }

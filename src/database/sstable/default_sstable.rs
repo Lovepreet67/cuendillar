@@ -1,9 +1,10 @@
 use std::{
     fs::{File, create_dir_all},
+    io::Read,
     path::PathBuf,
 };
 
-use crate::database::{common::Entry, memtable::Memtable, sstable::SSTable};
+use crate::database::{OwnedEntry, memtable::Memtable, sstable::SSTable};
 
 pub struct DefaultSSTable {
     root_dir: PathBuf,
@@ -28,10 +29,9 @@ impl DefaultSSTable {
     }
 }
 impl SSTable for DefaultSSTable {
-    fn push_memtable<K: Entry, T: Memtable<K>>(&mut self, mt: &T) -> Result<(), std::io::Error> {
+    fn push_memtable(&mut self, mt: &impl Memtable) -> Result<(), std::io::Error> {
         let new_table_id = format!("{}", mt.get_id());
         let new_table_path = self.root_dir.join(&new_table_id);
-        eprintln!("{:?}", new_table_path);
         let mut writer = File::options()
             .append(true)
             .create_new(true)
@@ -41,14 +41,11 @@ impl SSTable for DefaultSSTable {
         }
         Ok(())
     }
-    fn build_memtable<K: Entry, T: Memtable<K>>(
-        &mut self,
-        id: &uuid::Uuid,
-    ) -> Result<Vec<K>, std::io::Error> {
+    fn build_memtable(&mut self, id: &uuid::Uuid) -> Result<Vec<OwnedEntry>, std::io::Error> {
         let table_path = self.root_dir.join(&id.to_string());
         let mut reader = File::options().read(true).open(table_path)?;
         let mut tor = Vec::new();
-        while let Ok(entry) = K::decode(&mut reader) {
+        while let Ok(entry) = OwnedEntry::decode(&mut reader) {
             tor.push(entry);
         }
         Ok(tor)
