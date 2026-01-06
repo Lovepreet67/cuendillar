@@ -5,7 +5,7 @@ pub struct WALEntry {
     pub payload: Vec<u8>,
 }
 impl WALEntry {
-    pub fn from_entry(entry: Entry) -> Self {
+    pub fn from_entry(entry: &Entry) -> Self {
         let mut buff = Vec::new();
         entry.encode(&mut buff);
         Self { payload: buff }

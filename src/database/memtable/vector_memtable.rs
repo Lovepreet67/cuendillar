@@ -34,7 +34,7 @@ impl From<Entry<'_>> for VectorMemtableEntry {
                 key: key.into(),
                 value: Some(value.into()),
             },
-            Entry::Tombstore { key } => Self {
+            Entry::Tombstone { key } => Self {
                 key: key.into(),
                 value: None,
             },
@@ -44,7 +44,7 @@ impl From<Entry<'_>> for VectorMemtableEntry {
 impl<'a> From<&'a VectorMemtableEntry> for Entry<'a> {
     fn from(value: &'a VectorMemtableEntry) -> Self {
         if value.is_deleted() {
-            return Entry::Tombstore { key: &value.key };
+            return Entry::Tombstone { key: &value.key };
         } else {
             return Entry::Row {
                 key: &value.key,
@@ -71,16 +71,13 @@ impl Memtable for VectorMemtable {
     fn insert(&mut self, e: Entry) {
         self.store.push(e.into());
     }
-    fn find(&self, key: &[u8]) -> Result<Entry, MemtableError> {
+    fn find(&self, key: &[u8]) -> Result<Option<Entry>, MemtableError> {
         for element in self.store.iter().rev() {
             if element.get_key() == key {
-                if element.is_deleted() {
-                    return Err(MemtableError::Deleted);
-                }
-                return Ok(element.into());
+                return Ok(Some(element.into()));
             }
         }
-        return Err(MemtableError::NotFound);
+        return Ok(None);
     }
     fn iter(&self) -> impl std::iter::Iterator<Item = Entry<'_>> {
         VectorMemtableIterator {

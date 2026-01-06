@@ -21,7 +21,7 @@ pub fn test_wal(wal: &mut impl WAL) {
     ];
 
     for entry in entries.clone() {
-        wal.append_log(WALEntry::from_entry(entry)).unwrap();
+        wal.append_log(WALEntry::from_entry(&entry)).unwrap();
     }
     let log_file_ids = wal.get_wals().unwrap();
     assert_eq!(log_file_ids.len(), 1);

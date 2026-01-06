@@ -19,28 +19,27 @@ pub fn memtable_test_insert_and_find(memtable: &mut impl Memtable) {
     });
     assert_eq!(
         memtable.find(b"id1").unwrap(),
-        Entry::Row {
+        Some(Entry::Row {
             key: b"id1",
             value: b"value1",
-        }
+        })
     );
     assert_eq!(
         memtable.find("id2".as_bytes()).unwrap(),
-        Entry::Row {
+        Some(Entry::Row {
             key: b"id2",
             value: b"value2",
-        }
+        })
     );
     assert_eq!(
         memtable.find("id3".as_bytes()).unwrap(),
-        Entry::Row {
+        Some(Entry::Row {
             key: b"id3",
             value: b"value3",
-        }
+        })
     );
 }
 
-// TODO: update this test after updating the delete api
 pub fn memtable_test_delete(memtable: &mut impl Memtable) {
     memtable.insert(Entry::Row {
         key: b"id1",
@@ -52,23 +51,22 @@ pub fn memtable_test_delete(memtable: &mut impl Memtable) {
     });
     assert_eq!(
         memtable.find(b"id1").unwrap(),
-        Entry::Row {
+        Some(Entry::Row {
             key: b"id1",
             value: b"value1",
-        }
+        })
     );
     assert_eq!(
         memtable.find("id2".as_bytes()).unwrap(),
-        Entry::Row {
+        Some(Entry::Row {
             key: b"id2",
             value: b"value2",
-        }
+        })
     );
-    memtable.insert(Entry::Tombstore { key: b"id2" });
-    assert!(
-        memtable
-            .find("id2".as_bytes())
-            .is_err_and(|x| x == MemtableError::Deleted)
+    memtable.insert(Entry::Tombstone { key: b"id2" });
+    assert_eq!(
+        memtable.find("id2".as_bytes()),
+        Ok(Some(Entry::Tombstone { key: b"id2" }))
     );
 }
 
@@ -87,10 +85,10 @@ pub fn memtable_test_iterator(memtable: &mut impl Memtable) {
     });
     assert_eq!(
         memtable.find(b"id1").unwrap(),
-        Entry::Row {
+        Some(Entry::Row {
             key: b"id1",
             value: b"value1",
-        }
+        })
     );
     // testing iterator
     let items = memtable.iter().collect::<Vec<Entry>>();

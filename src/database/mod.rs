@@ -3,15 +3,15 @@ use std::{io::Read, io::Write};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
 mod api;
+mod db_engine;
 mod errors;
 mod memtable;
 mod sstable;
 mod wal;
-// mod writer;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Entry<'a> {
-    Tombstore { key: &'a [u8] },
+    Tombstone { key: &'a [u8] },
     Row { key: &'a [u8], value: &'a [u8] },
 }
 
@@ -24,7 +24,7 @@ impl Entry<'_> {
                 writer.write_u64::<BigEndian>(value.len() as u64)?;
                 writer.write(value)?;
             }
-            crate::database::Entry::Tombstore { key } => {
+            crate::database::Entry::Tombstone { key } => {
                 writer.write_u64::<BigEndian>(key.len() as u64)?;
                 writer.write(key)?;
                 writer.write_u64::<BigEndian>(0 as u64)?;
@@ -36,7 +36,7 @@ impl Entry<'_> {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum OwnedEntry {
-    Tombstore { key: Vec<u8> },
+    Tombstone { key: Vec<u8> },
     Row { key: Vec<u8>, value: Vec<u8> },
 }
 
@@ -47,7 +47,7 @@ impl OwnedEntry {
         reader.read_exact(&mut key)?;
         let val_size = reader.read_u64::<BigEndian>()?;
         if val_size == 0 {
-            return Ok(OwnedEntry::Tombstore { key: key });
+            return Ok(OwnedEntry::Tombstone { key: key });
         }
         let mut value = vec![0u8; val_size as usize];
         reader.read_exact(&mut value)?;
@@ -62,7 +62,7 @@ impl<'a> From<&'a OwnedEntry> for Entry<'a> {
                 key: key,
                 value: value,
             },
-            OwnedEntry::Tombstore { key } => Entry::Tombstore { key: key },
+            OwnedEntry::Tombstone { key } => Entry::Tombstone { key: key },
         }
     }
 }
