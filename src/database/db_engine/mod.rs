@@ -22,11 +22,11 @@ pub struct Engine {
     memtable_manager: DefaultManger<VectorMemtable>,
 }
 impl Engine {
-    pub fn new() -> Result<Self, Box<dyn Error>> {
+    pub fn new(root_path: &str) -> Result<Self, Box<dyn Error>> {
         let uid = uuid::Uuid::new_v4();
         let first_memtable = VectorMemtable::new(Some(uid));
         let memetable_manager = DefaultManger::intialize(first_memtable, VecDeque::new());
-        let mut wal_manager = DefaultWAL::new(PathBuf::from_str("./wal")?).unwrap();
+        let mut wal_manager = DefaultWAL::new(PathBuf::from_str(root_path)?).unwrap();
         wal_manager.rotate(Some(uid));
         Ok(Self {
             wal_manager: wal_manager,

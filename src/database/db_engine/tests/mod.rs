@@ -4,7 +4,7 @@ use crate::database::{Entry, db_engine::Engine};
 
 #[test]
 pub fn db_engine_test_insert_find_and_delete() {
-    let mut engine = Engine::new().unwrap();
+    let mut engine = Engine::new("./wal").unwrap();
     engine
         .write(Entry::Row {
             key: b"id1",

@@ -2,8 +2,7 @@ use std::{io::Read, io::Write};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
-mod api;
-mod db_engine;
+pub mod db_engine;
 mod errors;
 mod memtable;
 mod sstable;
