@@ -10,7 +10,19 @@ uuid = { version = "1.19.0", features = ["v4"] }
 [dev-dependencies]
 criterion = "0.8.1"
 tempfile = "3.24.0"
+hdrhistogram = "7.5.4"
+plotters = "0.3.7"
+chrono = "0.4.42"
 
 [[bench]]
 name = "db_workload"
+path = "benches/db_workload.rs"
 harness = false
+
+[[bench]]
+name = "db_workload_operation"
+path = "benches/db_operation_latency.rs"
+harness = false
+
+[profile.bench]
+debug = true

@@ -3,9 +3,7 @@ use cuendillar::database::db_engine::Engine;
 use tempfile::TempDir;
 
 use std::{
-    env::temp_dir,
     fs::File,
-    hint::black_box,
     io::{BufRead, BufReader},
 };
 
@@ -53,7 +51,7 @@ pub fn small_workload(c: &mut Criterion) {
         b.iter_batched(
             || {
                 let dir = TempDir::new().unwrap();
-                let mut engine = Engine::new(dir.path().to_str().unwrap()).unwrap();
+                let engine = Engine::new(dir.path().to_str().unwrap()).unwrap();
                 (dir, engine)
             },
             |(dir, mut engine)| {
@@ -74,7 +72,7 @@ pub fn b10k_workload(c: &mut Criterion) {
         b.iter_batched(
             || {
                 let dir = TempDir::new().unwrap();
-                let mut engine = Engine::new(dir.path().to_str().unwrap()).unwrap();
+                let engine = Engine::new(dir.path().to_str().unwrap()).unwrap();
                 (dir, engine)
             },
             |(dir, mut engine)| {
