@@ -40,6 +40,12 @@ pub enum OwnedEntry {
 }
 
 impl OwnedEntry {
+    pub fn get_id(&self) -> &[u8] {
+        return match self {
+            Self::Row { key, value: _ } => &key,
+            Self::Tombstone { key } => &key,
+        };
+    }
     pub fn decode(reader: &mut impl Read) -> Result<Self, std::io::Error> {
         let key_size = reader.read_u64::<BigEndian>()?;
         let mut key = vec![0u8; key_size as usize];
@@ -62,6 +68,17 @@ impl<'a> From<&'a OwnedEntry> for Entry<'a> {
                 value: value,
             },
             OwnedEntry::Tombstone { key } => Entry::Tombstone { key: key },
+        }
+    }
+}
+impl From<Entry<'_>> for OwnedEntry {
+    fn from(value: Entry<'_>) -> Self {
+        match value {
+            Entry::Row { key, value } => Self::Row {
+                key: key.into(),
+                value: value.into(),
+            },
+            Entry::Tombstone { key } => Self::Tombstone { key: key.into() },
         }
     }
 }

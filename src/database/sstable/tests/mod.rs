@@ -1,5 +1,5 @@
 use crate::database::{
-    Entry, OwnedEntry,
+    Entry,
     memtable::{Memtable, vector_memtable::VectorMemtable},
     sstable::SSTable,
 };
@@ -25,8 +25,25 @@ pub fn sstable_test_encoding_decoding(sst: &mut impl SSTable) {
         vm.insert(i);
     }
     sst.push_memtable(&vm).unwrap();
-    let x: Vec<OwnedEntry> = sst.build_memtable(vm.get_id()).unwrap();
-    let x_entry: Vec<Entry> = x.iter().map(|e| e.into()).collect();
-    let rev_entities: Vec<Entry> = entities.into_iter().rev().collect();
-    assert_eq!(x_entry, rev_entities);
+    assert_eq!(
+        sst.find(b"id3").unwrap(),
+        Some(
+            Entry::Row {
+                key: b"id3",
+                value: b"value3",
+            }
+            .into(),
+        )
+    );
+    assert_eq!(
+        sst.find(b"id2").unwrap(),
+        Some(
+            Entry::Row {
+                key: b"id2",
+                value: b"value2",
+            }
+            .into(),
+        )
+    );
+    assert_eq!(sst.find(b"id345").unwrap(), None);
 }
