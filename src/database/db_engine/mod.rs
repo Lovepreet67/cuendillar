@@ -43,6 +43,8 @@ impl Engine {
         // push it to sstable.
         self.sstable.push_memtable(ready_to_push_memetable)?;
         // signal memetbale manager to remove that memtable
+        self.wal_manager
+            .flush_wal(ready_to_push_memetable.get_id().clone())?;
         self.memtable_manager
             .mark_pushed(ready_to_push_memetable.get_id().clone())?;
         return Ok(());

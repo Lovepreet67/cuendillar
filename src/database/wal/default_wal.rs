@@ -1,5 +1,5 @@
 use std::{
-    fs::{File, create_dir_all},
+    fs::{File, create_dir_all, remove_file},
     io::{BufRead, BufReader, Seek, Write},
     path::PathBuf,
 };
@@ -86,5 +86,12 @@ impl WAL for DefaultWAL {
         self.metadata_file
             .seek(std::io::SeekFrom::Start(current_cursor_possition))?;
         Ok(log_ids)
+    }
+    fn flush_wal(&mut self, id: uuid::Uuid) -> Result<(), WALError> {
+        self.metadata_file.write_all(id.to_string().as_bytes())?;
+        self.metadata_file.write_all(" FLUSH\n".as_bytes())?;
+        let log_file_id = self.wal_dir.join(format!("{}.wal", id));
+        remove_file(log_file_id)?;
+        return Ok(());
     }
 }

@@ -6,6 +6,8 @@ edition = "2024"
 [dependencies]
 byteorder = "1.5.0"
 uuid = { version = "1.19.0", features = ["v4"] }
+bit-set = "0.8.0"
+murmur3 = "0.5.2"
 
 [dev-dependencies]
 criterion = "0.8.1"
@@ -25,4 +27,7 @@ path = "benches/db_operation_latency.rs"
 harness = false
 
 [profile.bench]
+debug = true
+
+[profile.release]
 debug = true

@@ -1,18 +1,23 @@
 use std::{
     fs::{File, create_dir_all},
-    io::{BufRead, BufReader, Seek, Write},
+    io::Write,
     path::PathBuf,
 };
 
 use crate::database::{
     OwnedEntry,
     memtable::Memtable,
-    sstable::{SSTable, errors::SSTableError},
+    sstable::{
+        SSTable,
+        bloom_filter::{BloomFilter, default_bloom_filter::DefaultBloomFilter},
+        errors::SSTableError,
+    },
 };
 
 pub struct DefaultSSTable {
     root_dir: PathBuf,
     metadata_file: File,
+    blooms: Vec<DefaultBloomFilter>,
 }
 
 impl DefaultSSTable {
@@ -28,6 +33,7 @@ impl DefaultSSTable {
             .write(true)
             .open(metadata_path)?;
         Ok(Self {
+            blooms: Vec::default(),
             root_dir,
             metadata_file,
         })
@@ -43,36 +49,25 @@ impl SSTable for DefaultSSTable {
             .open(new_table_path)?;
         self.metadata_file.write_all(new_table_id.as_bytes())?;
         self.metadata_file.write_all(b"\n")?;
+        let mut bloom = DefaultBloomFilter::new(*mt.get_id(), 10000, 100);
         for i in mt.iter() {
             i.encode(&mut writer)?;
+            bloom.add(i.get_key());
         }
+        self.blooms.push(bloom);
         Ok(())
     }
-    fn find(&mut self, id: &[u8]) -> Result<Option<OwnedEntry>, SSTableError> {
-        // currently we are assuming all the files are in L0 so we will do brute force search
-        // we will read the metadata file and then will go bottom to top scanning each memtable
-        let curr_pos = self.metadata_file.seek(std::io::SeekFrom::Current(0))?;
-        self.metadata_file.seek(std::io::SeekFrom::Start(0))?;
-        let buf = BufReader::new(&mut self.metadata_file);
-        let mut available_sstable = vec![];
-        for i in buf.lines() {
-            if i.is_err() {
-                println!("{:?}", i);
-                break;
-            }
-            let line = i?;
-            available_sstable.push(line);
-        }
-        self.metadata_file
-            .seek(std::io::SeekFrom::Start(curr_pos))?;
-        available_sstable = available_sstable.into_iter().rev().collect();
-        for table_id in available_sstable {
-            // we will build memtable and search in that
-            let table_path = self.root_dir.join(&table_id.to_string());
-            let mut reader = File::options().read(true).open(table_path)?;
-            while let Ok(entry) = OwnedEntry::decode(&mut reader) {
-                if id == entry.get_id() {
-                    return Ok(Some(entry));
+    fn find(&self, id: &[u8]) -> Result<Option<OwnedEntry>, SSTableError> {
+        // we will now use bloom filters and skip this metadata file call;
+        for bloom in self.blooms.iter().rev() {
+            // check if the key is in bloom filter
+            if bloom.check(id) {
+                let table_path = self.root_dir.join(&bloom.get_id().to_string());
+                let mut reader = File::options().read(true).open(table_path)?;
+                while let Ok(entry) = OwnedEntry::decode(&mut reader) {
+                    if id == entry.get_id() {
+                        return Ok(Some(entry));
+                    }
                 }
             }
         }

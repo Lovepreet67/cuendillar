@@ -31,6 +31,12 @@ impl Entry<'_> {
         }
         return Ok(());
     }
+    pub fn get_key(&self) -> &[u8] {
+        return match self {
+            Self::Row { key, value: _ } => &key,
+            Self::Tombstone { key } => &key,
+        };
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]

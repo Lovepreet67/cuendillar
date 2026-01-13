@@ -17,4 +17,5 @@ pub trait WAL: Sized {
     fn append_log(&mut self, entry: WALEntry) -> Result<(), WALError>;
     fn read(&mut self, log_id: &uuid::Uuid) -> Result<Vec<OwnedEntry>, WALError>;
     fn get_wals(&mut self) -> Result<Vec<uuid::Uuid>, WALError>;
+    fn flush_wal(&mut self, id: uuid::Uuid) -> Result<(), WALError>;
 }
