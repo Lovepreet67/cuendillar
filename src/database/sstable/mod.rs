@@ -1,7 +1,7 @@
 use crate::database::{OwnedEntry, memtable::Memtable, sstable::errors::SSTableError};
-pub mod bloom_filter;
 pub mod default_sstable;
 pub mod errors;
+pub mod metadata;
 #[cfg(test)]
 mod tests;
 

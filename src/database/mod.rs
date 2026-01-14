@@ -15,21 +15,29 @@ pub enum Entry<'a> {
 }
 
 impl Entry<'_> {
-    pub fn encode(&self, writer: &mut impl Write) -> Result<(), std::io::Error> {
+    pub fn encode(&self, writer: &mut impl Write) -> Result<u64, std::io::Error> {
+        let mut bytes_writen = 0;
         match self {
             crate::database::Entry::Row { key, value } => {
+                bytes_writen += 8;
                 writer.write_u64::<BigEndian>(key.len() as u64)?;
+                bytes_writen += key.len();
                 writer.write(key)?;
+                bytes_writen += 8;
                 writer.write_u64::<BigEndian>(value.len() as u64)?;
+                bytes_writen += value.len();
                 writer.write(value)?;
             }
             crate::database::Entry::Tombstone { key } => {
+                bytes_writen += 8;
                 writer.write_u64::<BigEndian>(key.len() as u64)?;
+                bytes_writen += key.len();
                 writer.write(key)?;
+                bytes_writen += 8;
                 writer.write_u64::<BigEndian>(0 as u64)?;
             }
         }
-        return Ok(());
+        return Ok(bytes_writen as u64);
     }
     pub fn get_key(&self) -> &[u8] {
         return match self {

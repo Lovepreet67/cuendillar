@@ -80,11 +80,20 @@ impl Memtable for VectorMemtable {
         return Ok(None);
     }
     fn iter(&self) -> impl std::iter::Iterator<Item = Entry<'_>> {
-        VectorMemtableIterator {
-            curr: self.store.len(),
-            memtable: self,
-            key_set: HashSet::default(),
+        // we will store a copy of enteries in sorted order
+        let mut seen = HashSet::new();
+        let mut entries = Vec::new();
+
+        for entry in self.store.iter().rev() {
+            if seen.insert(entry.key.clone()) {
+                // first time seeing this key = latest version
+                entries.push(entry);
+            }
         }
+
+        entries.sort_by(|a, b| a.key.cmp(&b.key));
+
+        VectorMemtableIterator { curr: 0, entries }
     }
     fn num_enteries(&self) -> u64 {
         self.store.len() as u64
@@ -99,22 +108,18 @@ impl Memtable for VectorMemtable {
 }
 
 pub(crate) struct VectorMemtableIterator<'a> {
-    memtable: &'a VectorMemtable,
+    entries: Vec<&'a VectorMemtableEntry>,
     curr: usize,
-    key_set: HashSet<&'a [u8]>,
 }
 impl<'a> Iterator for VectorMemtableIterator<'a> {
     type Item = Entry<'a>;
     fn next(&mut self) -> Option<Self::Item> {
-        while self.curr > 0 {
-            self.curr -= 1;
-            let curr_entry = &self.memtable.store[self.curr];
-            if self.key_set.contains(curr_entry.get_key()) {
-                continue;
-            }
-            self.key_set.insert(curr_entry.get_key());
-            return Some(curr_entry.into());
+        if self.curr >= self.entries.len() {
+            None
+        } else {
+            let e = self.entries[self.curr];
+            self.curr += 1;
+            Some(e.into())
         }
-        return None;
     }
 }
