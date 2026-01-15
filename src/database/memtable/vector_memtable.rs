@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::database::{
     Entry,
-    memtable::{Memtable, errors::MemtableError},
+    memtable::{Memtable, MemtableIterator, errors::MemtableError},
 };
 pub struct VectorMemtableEntry {
     key: Vec<u8>,
@@ -79,7 +79,7 @@ impl Memtable for VectorMemtable {
         }
         return Ok(None);
     }
-    fn iter(&self) -> impl std::iter::Iterator<Item = Entry<'_>> {
+    fn iter(&self) -> impl std::iter::Iterator<Item = Entry<'_>> + MemtableIterator {
         // we will store a copy of enteries in sorted order
         let mut seen = HashSet::new();
         let mut entries = Vec::new();
@@ -120,6 +120,23 @@ impl<'a> Iterator for VectorMemtableIterator<'a> {
             let e = self.entries[self.curr];
             self.curr += 1;
             Some(e.into())
+        }
+    }
+}
+
+impl<'a> MemtableIterator for VectorMemtableIterator<'a> {
+    fn get_first_entry(&self) -> Option<Entry<'_>> {
+        if self.entries.len() > 0 {
+            Some(self.entries[0].into())
+        } else {
+            None
+        }
+    }
+    fn get_last_entry(&self) -> Option<Entry<'_>> {
+        if self.entries.len() > 0 {
+            Some(self.entries[self.entries.len() - 1].into())
+        } else {
+            None
         }
     }
 }

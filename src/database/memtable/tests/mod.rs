@@ -96,16 +96,16 @@ pub fn memtable_test_iterator(memtable: &mut impl Memtable) {
         items,
         vec![
             Entry::Row {
-                key: b"id3",
-                value: b"value3",
+                key: b"id1",
+                value: b"value1",
             },
             Entry::Row {
                 key: b"id2",
                 value: b"value2",
             },
             Entry::Row {
-                key: b"id1",
-                value: b"value1",
+                key: b"id3",
+                value: b"value3",
             },
         ]
     )

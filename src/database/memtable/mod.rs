@@ -13,7 +13,12 @@ pub(crate) trait Memtable {
     fn get_id(&self) -> &Uuid;
     fn insert(&mut self, e: Entry);
     fn find(&self, key: &[u8]) -> Result<Option<Entry>, MemtableError>;
-    fn iter(&self) -> impl std::iter::Iterator<Item = Entry>;
+    fn iter(&self) -> impl std::iter::Iterator<Item = Entry> + MemtableIterator;
     fn size(&self) -> u64;
     fn num_enteries(&self) -> u64;
+}
+
+pub trait MemtableIterator: Iterator {
+    fn get_first_entry(&self) -> Option<Entry<'_>>;
+    fn get_last_entry(&self) -> Option<Entry<'_>>;
 }
