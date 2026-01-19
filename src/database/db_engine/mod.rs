@@ -1,7 +1,12 @@
 mod errors;
 #[cfg(test)]
 mod tests;
-use std::{collections::VecDeque, path::PathBuf, str::FromStr};
+use std::{
+    collections::VecDeque,
+    path::PathBuf,
+    str::FromStr,
+    sync::{Arc, RwLock},
+};
 
 use crate::database::{
     Entry, OwnedEntry,
@@ -11,7 +16,7 @@ use crate::database::{
         manager::{MemtableManager, default_manager::DefaultManger},
         vector_memtable::VectorMemtable,
     },
-    sstable::version_manager::VersionManager,
+    sstable::version_manager::{self, VersionManager},
     wal::{WAL, default_wal::DefaultWAL, wal_entry::WALEntry},
 };
 
@@ -25,7 +30,7 @@ pub struct Metrics {
 pub struct Engine {
     wal_manager: DefaultWAL,
     memtable_manager: DefaultManger<VectorMemtable>,
-    version_manager: VersionManager,
+    version_manager: Arc<RwLock<VersionManager>>,
     write_count: u64,
     pub metrics: Metrics,
 }
@@ -41,8 +46,9 @@ impl Engine {
         // push it to sstable.
         let new_version = self
             .version_manager
+            .read()?
             .push_memtable(ready_to_push_memetable)?;
-        self.version_manager.push_version(new_version);
+        self.version_manager.write()?.push_version(new_version);
         // signal memetbale manager to remove that memtable
         self.wal_manager
             .flush_wal(ready_to_push_memetable.get_id().clone())?;
@@ -56,11 +62,14 @@ impl Engine {
         let memetable_manager = DefaultManger::intialize(first_memtable, VecDeque::new(), 500);
         let mut wal_manager = DefaultWAL::new(PathBuf::from_str(root_path)?.join("wal")).unwrap();
         wal_manager.rotate(Some(uid))?;
-        let version_manager = VersionManager::new(PathBuf::from_str(root_path)?.join("sstable"));
+        let version_manager = Arc::new(RwLock::new(VersionManager::new(
+            PathBuf::from_str(root_path)?.join("sstable"),
+            //TODO: Handle this compaction properly
+        )));
         Ok(Self {
             wal_manager: wal_manager,
             memtable_manager: memetable_manager,
-            version_manager,
+            version_manager: version_manager.clone(),
             write_count: 0,
             metrics: Metrics::default(),
         })
@@ -83,7 +92,8 @@ impl Engine {
         let result = self.memtable_manager.find(key)?;
         if result.is_none() {
             self.metrics.sstable_hits += 1;
-            let latest_version = self.version_manager.get_latest_version();
+            let version_manager = self.version_manager.read()?;
+            let latest_version = version_manager.get_latest_version();
             let sstable_result = latest_version.find(key)?;
             return Ok(sstable_result);
         }

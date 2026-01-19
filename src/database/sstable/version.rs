@@ -1,3 +1,5 @@
+use uuid::Uuid;
+
 use crate::database::{
     OwnedEntry,
     sstable::{errors::SSTableError, metadata::SSTMetadata},
@@ -19,6 +21,14 @@ impl Version {
             self.levels.push(vec![table]);
         }
         self
+    }
+    /// INDEX_SAFETY: This function is used by compaction which will only run if the tables in l0 is > 0
+    pub fn get_level_tables(&self, level: usize) -> Option<&Vec<SSTMetadata>> {
+        if self.levels.len() <= level {
+            None
+        } else {
+            Some(&self.levels[level])
+        }
     }
     pub fn find(&self, key: &[u8]) -> Result<Option<OwnedEntry>, SSTableError> {
         // for l0 we will check for each and every sstable

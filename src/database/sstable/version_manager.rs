@@ -1,7 +1,7 @@
 use std::{
-    cell::OnceCell,
     fs::{File, create_dir_all},
     path::PathBuf,
+    sync::OnceLock,
 };
 
 use crate::database::{
@@ -9,7 +9,7 @@ use crate::database::{
     sstable::{
         errors::SSTableError,
         metadata::{
-            SSTMetadata,
+            SSTMetadata, SSTableFooter,
             bloom_filter::{BloomFilter, default_bloom_filter::DefaultBloomFilter},
             index::{SSTIndex, default_index::DefaultIndex},
         },
@@ -36,6 +36,7 @@ impl VersionManager {
         assert!(self.versions.len() > 0);
         self.versions.last().unwrap()
     }
+
     /// This Function doesn't change anything it returns the new version which caller need to to add to version manager
     /// Calling push_version
     pub fn push_memtable(&self, mt: &impl Memtable) -> Result<Version, SSTableError> {
@@ -75,8 +76,10 @@ impl VersionManager {
             index,
             first_key,
             last_key,
-            OnceCell::new(),
+            OnceLock::new(),
             new_table_path,
+            // TODO: encode the bytes_encoded and bloom filter to fil
+            SSTableFooter::new(bytes_encoded, 0, 0),
         );
         let latest_version = if self.versions.len() > 0 {
             self.get_latest_version().clone()

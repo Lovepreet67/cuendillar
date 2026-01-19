@@ -1,4 +1,4 @@
-use std::convert::Infallible;
+use std::{convert::Infallible, sync::PoisonError};
 
 use crate::database::{
     memtable::errors::MemtableError, sstable::errors::SSTableError, wal::errors::WALError,
@@ -7,6 +7,7 @@ use crate::database::{
 #[derive(Debug)]
 pub enum EngineError {
     General,
+    PosionError,
 }
 
 impl From<MemtableError> for EngineError {
@@ -35,5 +36,11 @@ impl From<Infallible> for EngineError {
 impl From<std::io::Error> for EngineError {
     fn from(_value: std::io::Error) -> Self {
         Self::General
+    }
+}
+
+impl<T> From<PoisonError<T>> for EngineError {
+    fn from(_value: PoisonError<T>) -> Self {
+        Self::PosionError
     }
 }
