@@ -39,10 +39,12 @@ impl VersionManager {
 
     /// This Function doesn't change anything it returns the new version which caller need to to add to version manager
     /// Calling push_version
-    pub fn push_memtable(&self, mt: &impl Memtable) -> Result<Version, SSTableError> {
+    pub fn push_memtable(&self, mt: &impl Memtable) -> Result<SSTMetadata, SSTableError> {
         assert!(mt.size() > 0);
         let new_table_id = format!("{}", mt.get_id());
-        let new_table_path = self.root_dir.join(&new_table_id);
+        let l0_dir = self.root_dir.join("l0");
+        create_dir_all(&l0_dir)?;
+        let new_table_path = l0_dir.join(&new_table_id);
         let mut writer = File::options()
             .append(true)
             .create_new(true)
@@ -81,14 +83,19 @@ impl VersionManager {
             // TODO: encode the bytes_encoded and bloom filter to fil
             SSTableFooter::new(bytes_encoded, 0, 0),
         );
-        let latest_version = if self.versions.len() > 0 {
-            self.get_latest_version().clone()
-        } else {
-            Version::new(Vec::default())
-        };
         // now we will update
         // we will insert this to the the L0 of the latest version
-        Ok(latest_version.add_l0_table(sst_meta))
+        Ok(sst_meta)
+    }
+    pub fn push_l0_update(&mut self, sst_meta: SSTMetadata) {
+        let new_version = if self.versions.len() > 0 {
+            let latest_version = self.get_latest_version();
+            let original_version = latest_version.clone();
+            original_version.add_l0_table(sst_meta)
+        } else {
+            Version::new(vec![vec![sst_meta]])
+        };
+        self.push_version(new_version);
     }
 
     pub fn push_version(&mut self, v: Version) {

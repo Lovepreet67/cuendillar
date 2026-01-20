@@ -6,7 +6,7 @@ use std::{
 use crate::database::sstable::{errors::SSTableError, metadata::index::SSTIndex};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DefaultIndexEntry {
     key: Vec<u8>,
     offset: u64,
@@ -31,7 +31,7 @@ impl DefaultIndexEntry {
     }
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct DefaultIndex {
     entries: Vec<DefaultIndexEntry>,
     last_offset: u64,

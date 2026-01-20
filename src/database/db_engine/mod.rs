@@ -16,7 +16,7 @@ use crate::database::{
         manager::{MemtableManager, default_manager::DefaultManger},
         vector_memtable::VectorMemtable,
     },
-    sstable::version_manager::{self, VersionManager},
+    sstable::{compaction::leveled_compaction::LevelCompaction, version_manager::VersionManager},
     wal::{WAL, default_wal::DefaultWAL, wal_entry::WALEntry},
 };
 
@@ -44,11 +44,11 @@ impl Engine {
         }
         let ready_to_push_memetable = ready_to_push_memetable.unwrap();
         // push it to sstable.
-        let new_version = self
+        let sst_meta = self
             .version_manager
             .read()?
             .push_memtable(ready_to_push_memetable)?;
-        self.version_manager.write()?.push_version(new_version);
+        self.version_manager.write()?.push_l0_update(sst_meta);
         // signal memetbale manager to remove that memtable
         self.wal_manager
             .flush_wal(ready_to_push_memetable.get_id().clone())?;
@@ -64,8 +64,13 @@ impl Engine {
         wal_manager.rotate(Some(uid))?;
         let version_manager = Arc::new(RwLock::new(VersionManager::new(
             PathBuf::from_str(root_path)?.join("sstable"),
-            //TODO: Handle this compaction properly
         )));
+        let level_compaction = LevelCompaction::new(
+            version_manager.clone(),
+            3,
+            PathBuf::from_str(root_path)?.join("sstable"),
+        );
+        level_compaction.init();
         Ok(Self {
             wal_manager: wal_manager,
             memtable_manager: memetable_manager,

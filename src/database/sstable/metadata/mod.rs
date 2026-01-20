@@ -23,7 +23,7 @@ pub mod index;
 // SSTable Footer will be of fixed size
 // 8+8+8 = 32 bytes
 // this will help us to divide table and decode parts accordingly
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct SSTableFooter {
     data_block_size: u64,
     bloom_filter_size: u64,
@@ -38,6 +38,7 @@ impl SSTableFooter {
         }
     }
 }
+#[derive(Debug)]
 pub struct SSTMetadata {
     pub id: uuid::Uuid,
     pub bloom: DefaultBloomFilter,
@@ -117,11 +118,7 @@ impl SSTMetadata {
     }
 
     pub fn item_list(&self) -> Result<Vec<OwnedEntry>, SSTableError> {
-        if self.file.get().is_none() {
-            let file = File::options().read(true).open(&self.file_path)?;
-            self.file.get_or_init(move || file);
-        }
-        let reader = self.file.get().expect("File Should always there");
+        let reader = File::options().read(true).open(&self.file_path)?;
         // we will limit the reader to data block only
         let mut data_reader = reader.take(self.footer.data_block_size);
         let mut enteries = vec![];
@@ -129,5 +126,8 @@ impl SSTMetadata {
             enteries.push(entry);
         }
         Ok(enteries)
+    }
+    pub fn get_size(&self) -> u64 {
+        self.footer.data_block_size + self.footer.bloom_filter_size + self.footer.index_block_size
     }
 }

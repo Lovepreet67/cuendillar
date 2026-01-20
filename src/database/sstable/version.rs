@@ -5,7 +5,7 @@ use crate::database::{
     sstable::{errors::SSTableError, metadata::SSTMetadata},
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Version {
     levels: Vec<Vec<SSTMetadata>>,
 }
@@ -163,7 +163,7 @@ mod test {
         let dir = TempDir::new().unwrap();
         let mut version_manager = VersionManager::new(PathBuf::from(dir.path()));
         let v1 = version_manager.push_memtable(&vm).unwrap();
-        version_manager.push_version(v1);
+        version_manager.push_l0_update(v1);
         let entities2 = vec![
             Entry::Row {
                 key: b"id3",
