@@ -204,6 +204,7 @@ impl LevelCompaction {
                     .get_level_tables(0)
                     .unwrap()
                     .into_iter()
+                    .rev()
                     .map(|table| {
                         let mut filterd_entries = vec![];
                         for item in table
@@ -251,7 +252,7 @@ impl LevelCompaction {
                     .get_level_tables(0)
                     .unwrap()
                     .into_iter() // SAFE for now as no other thread is updating version l0 size will be atleast = version we have
-                    .filter(|table| l0_table_ids_compacted.contains(&table.id))
+                    .filter(|table| !l0_table_ids_compacted.contains(&table.id))
                     .map(|table| table.clone())
                     .collect();
                 new_version_lists[0] = updated_l0;

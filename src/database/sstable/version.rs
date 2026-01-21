@@ -1,5 +1,3 @@
-use uuid::Uuid;
-
 use crate::database::{
     OwnedEntry,
     sstable::{errors::SSTableError, metadata::SSTMetadata},
