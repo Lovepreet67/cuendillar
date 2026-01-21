@@ -3,7 +3,7 @@ use crate::database::{
     sstable::{errors::SSTableError, metadata::SSTMetadata},
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Version {
     levels: Vec<Vec<SSTMetadata>>,
 }
@@ -19,6 +19,14 @@ impl Version {
             self.levels.push(vec![table]);
         }
         self
+    }
+    /// INDEX_SAFETY: This function is used by compaction which will only run if the tables in l0 is > 0
+    pub fn get_level_tables(&self, level: usize) -> Option<&Vec<SSTMetadata>> {
+        if self.levels.len() <= level {
+            None
+        } else {
+            Some(&self.levels[level])
+        }
     }
     pub fn find(&self, key: &[u8]) -> Result<Option<OwnedEntry>, SSTableError> {
         // for l0 we will check for each and every sstable
@@ -153,7 +161,7 @@ mod test {
         let dir = TempDir::new().unwrap();
         let mut version_manager = VersionManager::new(PathBuf::from(dir.path()));
         let v1 = version_manager.push_memtable(&vm).unwrap();
-        version_manager.push_version(v1);
+        version_manager.push_l0_update(v1);
         let entities2 = vec![
             Entry::Row {
                 key: b"id3",

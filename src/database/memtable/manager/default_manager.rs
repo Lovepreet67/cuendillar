@@ -67,14 +67,14 @@ where
         self.active_memtable.size() > self.max_size
     }
     fn get_memtable_to_push(&self) -> Option<&impl Memtable> {
-        return self.immutable_memtables.front();
+        return self.immutable_memtables.back();
     }
     fn mark_pushed(&mut self, memetable_id: uuid::Uuid) -> Result<(), MemtableError> {
         if let Some(first_memtable) = self.immutable_memtables.front() {
             if first_memtable.get_id() != &memetable_id {
                 return Err(MemtableError::InvalidCandidateId);
             }
-            self.immutable_memtables.pop_front();
+            self.immutable_memtables.pop_back();
             return Ok(());
         }
         Err(MemtableError::NoImmutableMemtableExist)

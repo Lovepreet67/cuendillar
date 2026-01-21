@@ -1,4 +1,10 @@
-use std::{cell::OnceCell, fs::File, io::Cursor, os::unix::fs::FileExt, path::PathBuf};
+use std::{
+    fs::File,
+    io::{Cursor, Read},
+    os::unix::fs::FileExt,
+    path::PathBuf,
+    sync::OnceLock,
+};
 
 use crate::database::{
     OwnedEntry,
@@ -13,14 +19,35 @@ use crate::database::{
 
 pub mod bloom_filter;
 pub mod index;
+
+// SSTable Footer will be of fixed size
+// 8+8+8 = 32 bytes
+// this will help us to divide table and decode parts accordingly
+#[derive(Clone, Copy, Debug)]
+pub struct SSTableFooter {
+    data_block_size: u64,
+    bloom_filter_size: u64,
+    index_block_size: u64,
+}
+impl SSTableFooter {
+    pub fn new(data_block_size: u64, bloom_filter_size: u64, index_block_size: u64) -> Self {
+        Self {
+            data_block_size,
+            bloom_filter_size,
+            index_block_size,
+        }
+    }
+}
+#[derive(Debug)]
 pub struct SSTMetadata {
     pub id: uuid::Uuid,
     pub bloom: DefaultBloomFilter,
     pub index: DefaultIndex,
     pub first_key: Vec<u8>,
     pub last_key: Vec<u8>,
-    pub file: OnceCell<File>,
+    pub file: OnceLock<File>,
     pub file_path: PathBuf,
+    pub footer: SSTableFooter,
 }
 
 impl Clone for SSTMetadata {
@@ -31,8 +58,9 @@ impl Clone for SSTMetadata {
             index: self.index.clone(),
             first_key: self.first_key.clone(),
             last_key: self.last_key.clone(),
-            file: OnceCell::new(),
+            file: OnceLock::new(),
             file_path: self.file_path.clone(),
+            footer: self.footer,
         }
     }
 }
@@ -44,8 +72,9 @@ impl SSTMetadata {
         index: DefaultIndex,
         first_key: Vec<u8>,
         last_key: Vec<u8>,
-        file: OnceCell<File>,
+        file: OnceLock<File>,
         file_path: PathBuf,
+        footer: SSTableFooter,
     ) -> Self {
         Self {
             id,
@@ -55,6 +84,7 @@ impl SSTMetadata {
             last_key,
             file,
             file_path,
+            footer,
         }
     }
     pub fn find(&self, key: &[u8]) -> Result<Option<OwnedEntry>, SSTableError> {
@@ -85,5 +115,19 @@ impl SSTMetadata {
             }
         }
         return Ok(None);
+    }
+
+    pub fn item_list(&self) -> Result<Vec<OwnedEntry>, SSTableError> {
+        let reader = File::options().read(true).open(&self.file_path)?;
+        // we will limit the reader to data block only
+        let mut data_reader = reader.take(self.footer.data_block_size);
+        let mut enteries = vec![];
+        while let Ok(entry) = OwnedEntry::decode(&mut data_reader) {
+            enteries.push(entry);
+        }
+        Ok(enteries)
+    }
+    pub fn get_size(&self) -> u64 {
+        self.footer.data_block_size + self.footer.bloom_filter_size + self.footer.index_block_size
     }
 }

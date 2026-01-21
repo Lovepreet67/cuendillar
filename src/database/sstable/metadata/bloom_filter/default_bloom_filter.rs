@@ -5,7 +5,7 @@ use murmur3::murmur3_32;
 
 use crate::database::sstable::metadata::bloom_filter::BloomFilter;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DefaultBloomFilter {
     size: u32,
     bits_per_key: u32,
