@@ -24,6 +24,7 @@ use crate::database::{
 };
 const INDEX_BLOCK_MIN_BYTES: u64 = 400;
 const MAX_LEVELS: u16 = 5;
+const MAX_ENTERIES_PER_TABLE: usize = 100;
 
 pub struct LevelCompaction {
     version_manager: Arc<RwLock<VersionManager>>,
@@ -47,7 +48,7 @@ impl LevelCompaction {
         &self,
         level: u16,
         table_id: uuid::Uuid,
-        enteries: Vec<OwnedEntry>,
+        enteries: &[OwnedEntry],
     ) -> Result<SSTMetadata, SSTableError> {
         assert!(enteries.len() > 0);
         let level_path = self.root_dir.join(format!("l{}", level));
@@ -65,7 +66,7 @@ impl LevelCompaction {
         let first_key = enteries[0].get_id().into();
         let last_key = enteries[enteries.len() - 1].get_id().into();
         for i in enteries {
-            let i = Entry::from(&i);
+            let i = Entry::from(i);
             // check if entry is eligible for entry
             if byte_encoded_since_last_index >= INDEX_BLOCK_MIN_BYTES {
                 index.add_entry(i.get_key(), bytes_encoded);
@@ -132,20 +133,27 @@ impl LevelCompaction {
         // we will find the table in which we entries are overlaping
         let mut updated_sst_list = vec![];
         // TODO: Avoid this allocation
-        let first_key = enteries[0].get_id().into();
+        let mut first_key = enteries[0].get_id().into();
         // Assumtion: enteries contain always items >1
-        let last_key = enteries[enteries.len() - 1].get_id().into();
+        let mut last_key = enteries[enteries.len() - 1].get_id().into();
+
         for table in ln_tables {
             // we will check using first and last key
             if (table.first_key <= first_key && table.last_key >= first_key)
                 || (table.first_key <= last_key && table.last_key >= last_key)
+                || (first_key <= table.first_key && last_key >= table.first_key)
+                || (first_key <= table.last_key && last_key >= table.last_key)
             {
                 // we need to merge this into enteries
                 // we have two list both sorted and
                 enteries = Self::merge(enteries, table.item_list()?);
+                // first and last key will change after merging the enteries;
+                first_key = enteries[0].get_id().into();
+                // Assumtion: enteries contain always items >1
+                last_key = enteries[enteries.len() - 1].get_id().into();
             }
             // else if the last key of enteris is smaller than current table it means the entries sstable should be in front of current
-            else if enteries.len() > 0 && table.first_key >= last_key {
+            else if enteries.len() > 0 && table.first_key > last_key {
                 let original_enteries = if level < MAX_LEVELS {
                     take(&mut enteries)
                 } else {
@@ -160,10 +168,16 @@ impl LevelCompaction {
                         })
                         .collect()
                 };
-                let sstable_meta = self
-                    .encode_table(level, uuid::Uuid::new_v4(), original_enteries)
-                    .expect("Error while creating new sstable");
-                updated_sst_list.push(sstable_meta);
+                // currently we are merging all enteries to single sstable but it should be multiple tables
+                let max_enteries_per_sstable =
+                    (4 as usize).pow(level.into()) * MAX_ENTERIES_PER_TABLE;
+                // we will split the whole enteries into the block the size calculated
+                for entry_group in original_enteries.chunks(max_enteries_per_sstable) {
+                    let sstable_meta = self
+                        .encode_table(level, uuid::Uuid::new_v4(), entry_group)
+                        .expect("Error while creating new sstable");
+                    updated_sst_list.push(sstable_meta);
+                }
                 updated_sst_list.push(table.clone());
             } else {
                 // we will use that sstable as it is
@@ -172,10 +186,14 @@ impl LevelCompaction {
         }
         // entereis may be added at the end
         if enteries.len() > 0 {
-            let sstable_meta = self
-                .encode_table(level, uuid::Uuid::new_v4(), enteries)
-                .expect("Error while creating new sstable");
-            updated_sst_list.push(sstable_meta);
+            let max_enteries_per_sstable = (4 as usize).pow(level.into()) * MAX_ENTERIES_PER_TABLE;
+            // we will split the whole enteries into the block the size calculated
+            for entry_group in enteries.chunks(max_enteries_per_sstable) {
+                let sstable_meta = self
+                    .encode_table(level, uuid::Uuid::new_v4(), entry_group)
+                    .expect("Error while creating new sstable");
+                updated_sst_list.push(sstable_meta);
+            }
         }
         Ok(updated_sst_list)
     }
@@ -233,11 +251,30 @@ impl LevelCompaction {
                         li_total_size += i.get_size();
                     }
                     // we will check if the level size is exceeding the threshold (to trigger compaction again)
-                    if li_total_size < (10 as u64).pow(i.into()) * 10000 || i == MAX_LEVELS {
+                    if li_total_size < (4 as u64).pow(i.into()) * 10000 || i == MAX_LEVELS {
+                        // we will not break to avoid missing levels in the updated version
+                        // we have to push all the levels to the updated version
                         new_version_lists.push(new_li_meta);
+                        let mut level = (i + 1) as usize;
+                        while let Some(list) = version.get_level_tables(level) {
+                            new_version_lists.push(list.clone());
+                            level += 1;
+                        }
                         break;
                     }
-                    merged_enteries = new_li_meta.pop().unwrap().item_list().unwrap();
+                    // we will pop the last 2 enteries if there are and use them as a new version list
+                    // and skip the last level as  we can't compact it to next level
+                    if i < MAX_LEVELS - 1 {
+                        merged_enteries = new_li_meta.pop().unwrap().item_list().unwrap();
+                        if !new_li_meta.is_empty() {
+                            let mut updated_vec = new_li_meta.pop().unwrap().item_list().unwrap();
+                            updated_vec.extend(merged_enteries);
+                            merged_enteries = updated_vec
+                        }
+                    } else {
+                        // nothing to worry since current iteration is last iteration
+                        merged_enteries = vec![];
+                    }
                     new_version_lists.push(new_li_meta);
                 }
                 let l0_table_ids_compacted = version

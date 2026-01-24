@@ -1,11 +1,24 @@
+use std::fmt::Debug;
+
 use crate::database::{
     OwnedEntry,
     sstable::{errors::SSTableError, metadata::SSTMetadata},
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Version {
     levels: Vec<Vec<SSTMetadata>>,
+}
+impl Debug for Version {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut ds = f.debug_struct("Version");
+
+        for (level_idx, level) in self.levels.iter().enumerate() {
+            ds.field(&format!("level_{}", level_idx), level);
+        }
+
+        ds.finish()
+    }
 }
 
 impl Version {
@@ -49,9 +62,11 @@ impl Version {
 
         // now for each level we will perform the binary search
         for level in &self.levels[1..] {
-            // we can assume that there will be no overlapping between data
-            // so there will be only one table which may contain the key
-            // find the table which contain the data and check for that table only
+            /*
+            we can assume that there will be no overlapping between data
+            so there will be only one table which may contain the key
+            find the table which contain the data and check for that table only
+            */
             let target_table_metadata = match level.binary_search_by(|table_metadata| {
                 if table_metadata.first_key.as_slice() <= key
                     && table_metadata.last_key.as_slice() >= key
