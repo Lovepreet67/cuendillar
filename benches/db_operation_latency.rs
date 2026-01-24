@@ -228,17 +228,13 @@ pub fn run(workload: &str, file: &str) {
     let dir = TempDir::new().unwrap();
     let mut engine = Engine::new(dir.path().to_str().unwrap()).unwrap();
 
-    sleep(Duration::from_secs(5)); // warm-up
+    sleep(Duration::from_secs(10)); // warm-up
     let stats = run_workload(&mut engine, file);
     stats.report(&out_dir);
 }
 
 fn main() {
-    let workload = std::env::args().nth(1).expect("workload name required");
-
-    match workload.as_str() {
-        "small" => run("small", "benches/workload/small.txt"),
-        "10k" => run("10k", "benches/workload/10k.txt"),
-        _ => run("10k", "benches/workload/10k.txt"),
-    }
+    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "10k".to_owned());
+    let active_workload_file = format!("workload/{}.txt", active_workload);
+    run(&active_workload, &active_workload_file);
 }

@@ -1,5 +1,6 @@
 use std::{
     fs::{File, create_dir_all},
+    io::Write,
     path::PathBuf,
     sync::OnceLock,
 };
@@ -20,16 +21,24 @@ use crate::database::{
 pub struct VersionManager {
     root_dir: PathBuf,
     versions: Vec<Version>,
+    version_file: File,
 }
 const INDEX_BLOCK_MIN_BYTES: u64 = 400;
 
 impl VersionManager {
     pub fn new(root_dir: PathBuf) -> Self {
         create_dir_all(&root_dir).unwrap();
+        let version_file = File::options()
+            .create(true)
+            .append(true)
+            .open(root_dir.join("versions.txt"))
+            // .open("versions.txt")
+            .unwrap();
         Self {
             root_dir,
             // we will insert version which doesn't contain any sstable
             versions: vec![Version::new(Vec::default())],
+            version_file,
         }
     }
     pub fn get_latest_version(&self) -> &Version {
@@ -99,6 +108,7 @@ impl VersionManager {
     }
 
     pub fn push_version(&mut self, v: Version) {
+        writeln!(self.version_file, "{:#?}", v).unwrap();
         self.versions.push(v);
     }
 }

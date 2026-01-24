@@ -59,11 +59,15 @@ pub fn execute_op(engine: &mut Engine, op: Operation) {
     };
 }
 #[test]
-pub fn b10k_workload() {
-    let dir = TempDir::new().unwrap();
-    let mut engine = Engine::new(dir.path().to_str().unwrap()).unwrap();
-    // let mut engine = Engine::new("./table").unwrap();
-    run_workload(&mut engine, "tests/workload/10000.txt");
+pub fn db_engine_test() {
+    // let dir = TempDir::new().unwrap();
+    // let mut engine = Engine::new(dir.path().to_str().unwrap()).unwrap();
+    let mut engine = Engine::new("./table").unwrap();
+
+    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "10k".to_owned());
+    let active_workload_file = format!("workload/{}.txt", active_workload);
+    println!("Active workload is set to {}", active_workload);
+    run_workload(&mut engine, &active_workload_file);
     let metrics = engine.metrics;
     let mut output_file = File::options()
         .create(true)

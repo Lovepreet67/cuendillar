@@ -1,4 +1,5 @@
 use std::{
+    fmt::Debug,
     fs::File,
     io::{Cursor, Read},
     os::unix::fs::FileExt,
@@ -38,7 +39,6 @@ impl SSTableFooter {
         }
     }
 }
-#[derive(Debug)]
 pub struct SSTMetadata {
     pub id: uuid::Uuid,
     pub bloom: DefaultBloomFilter,
@@ -48,6 +48,16 @@ pub struct SSTMetadata {
     pub file: OnceLock<File>,
     pub file_path: PathBuf,
     pub footer: SSTableFooter,
+}
+impl Debug for SSTMetadata {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SSTMetadata")
+            .field("id", &self.id)
+            .field("first_key", &String::from_utf8_lossy(&self.first_key))
+            .field("last_key", &String::from_utf8_lossy(&self.last_key))
+            .field("footer", &self.footer)
+            .finish()
+    }
 }
 
 impl Clone for SSTMetadata {

@@ -1,4 +1,5 @@
 use std::{
+    fmt::Debug,
     io::{Read, Write},
     path::PathBuf,
 };
@@ -11,10 +12,29 @@ mod memtable;
 mod sstable;
 mod wal;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(PartialEq, Clone)]
 pub enum Entry<'a> {
     Tombstone { key: &'a [u8] },
     Row { key: &'a [u8], value: &'a [u8] },
+}
+impl Debug for Entry<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Row { key, value } => {
+                f.debug_struct("Entry")
+                    .field("key", &String::from_utf8(key.to_vec()).unwrap())
+                    .field("value", &String::from_utf8(value.to_vec()).unwrap())
+                    .finish()?;
+            }
+            Self::Tombstone { key } => {
+                f.debug_struct("Entry")
+                    .field("key", &String::from_utf8(key.to_vec()).unwrap())
+                    .field("value", &"None")
+                    .finish()?;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Entry<'_> {
@@ -50,7 +70,7 @@ impl Entry<'_> {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(PartialEq, Clone)]
 pub enum OwnedEntry {
     Tombstone { key: Vec<u8> },
     Row { key: Vec<u8>, value: Vec<u8> },
@@ -74,6 +94,26 @@ impl OwnedEntry {
         let mut value = vec![0u8; val_size as usize];
         reader.read_exact(&mut value)?;
         Ok(OwnedEntry::Row { key, value })
+    }
+}
+
+impl Debug for OwnedEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Row { key, value } => {
+                f.debug_struct("OwnedEntry")
+                    .field("key", &String::from_utf8(key.to_vec()).unwrap())
+                    .field("value", &String::from_utf8(value.to_vec()).unwrap())
+                    .finish()?;
+            }
+            Self::Tombstone { key } => {
+                f.debug_struct("OwnedEntry")
+                    .field("key", &String::from_utf8(key.to_vec()).unwrap())
+                    .field("value", &"None")
+                    .finish()?;
+            }
+        }
+        Ok(())
     }
 }
 
