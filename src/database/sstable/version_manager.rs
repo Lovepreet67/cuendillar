@@ -1,8 +1,9 @@
 use std::{
+    collections::{HashSet, VecDeque},
     fs::{File, create_dir_all},
     io::Write,
     path::PathBuf,
-    sync::OnceLock,
+    sync::{Arc, OnceLock},
 };
 
 use crate::database::{
@@ -20,7 +21,7 @@ use crate::database::{
 
 pub struct VersionManager {
     root_dir: PathBuf,
-    versions: Vec<Version>,
+    versions: VecDeque<Arc<Version>>,
     version_file: File,
 }
 const INDEX_BLOCK_MIN_BYTES: u64 = 400;
@@ -34,16 +35,60 @@ impl VersionManager {
             .open(root_dir.join("versions.txt"))
             // .open("versions.txt")
             .unwrap();
+        let mut versions = VecDeque::new();
+        let v0 = Arc::new(Version::new(Vec::default()));
+        versions.push_back(v0);
         Self {
             root_dir,
             // we will insert version which doesn't contain any sstable
-            versions: vec![Version::new(Vec::default())],
+            versions,
             version_file,
         }
     }
     pub fn get_latest_version(&self) -> &Version {
         assert!(self.versions.len() > 0);
-        self.versions.last().unwrap()
+        self.versions.back().unwrap()
+    }
+    // This function will return the sstatble meta which are clear to be droped
+    pub fn claim(&mut self) -> Vec<PathBuf> {
+        if self.versions.len() < 2 {
+            return vec![];
+        }
+        // we will find first version whose strong count is >1 (meaning currently in use)
+        let index = self
+            .versions
+            .iter()
+            .position(|v| Arc::strong_count(v) > 1)
+            .unwrap_or_else(|| self.versions.len() - 1);
+        let mut sstables_still_active = HashSet::new();
+        let version = &self.versions[index];
+        let mut level = 0;
+        while let Some(tables) = version.get_level_tables(level) {
+            for table in tables {
+                sstables_still_active.insert(table.id);
+            }
+            level += 1;
+        }
+        let mut sstable_included_in_drop = HashSet::new();
+        let mut files_to_delete: Vec<PathBuf> = vec![];
+        for i in 0..index {
+            // SAFETY: As we know this is the sole owner of arc
+            let mut version = Arc::try_unwrap(self.versions.pop_front().unwrap()).unwrap();
+            let mut level = 0;
+            while let Some(tables) = version.get_level_tables_owned(level) {
+                for mut table in tables {
+                    if !sstables_still_active.contains(&table.id)
+                        && !sstable_included_in_drop.contains(&table.id)
+                    {
+                        sstable_included_in_drop.insert(table.id);
+                        files_to_delete.push(std::mem::take(&mut table.file_path));
+                    }
+                }
+                level += 1;
+            }
+        }
+        // else if
+        files_to_delete
     }
 
     /// This Function doesn't change anything it returns the new version which caller need to to add to version manager
@@ -109,6 +154,6 @@ impl VersionManager {
 
     pub fn push_version(&mut self, v: Version) {
         writeln!(self.version_file, "{:#?}", v).unwrap();
-        self.versions.push(v);
+        self.versions.push_back(Arc::new(v));
     }
 }

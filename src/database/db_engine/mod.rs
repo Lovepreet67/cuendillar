@@ -16,7 +16,10 @@ use crate::database::{
         manager::{MemtableManager, default_manager::DefaultManger},
         vector_memtable::VectorMemtable,
     },
-    sstable::{compaction::leveled_compaction::LevelCompaction, version_manager::VersionManager},
+    sstable::{
+        cleaner::Cleaner, compaction::leveled_compaction::LevelCompaction,
+        version_manager::VersionManager,
+    },
     wal::{WAL, default_wal::DefaultWAL, wal_entry::WALEntry},
 };
 
@@ -71,6 +74,8 @@ impl Engine {
             PathBuf::from_str(root_path)?.join("sstable"),
         );
         level_compaction.init();
+        let cleaner = Cleaner::new(version_manager.clone());
+        cleaner.init();
         Ok(Self {
             wal_manager: wal_manager,
             memtable_manager: memetable_manager,
