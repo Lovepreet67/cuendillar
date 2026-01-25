@@ -1,4 +1,5 @@
 use std::{
+    cmp::max,
     collections::HashSet,
     fs::{File, create_dir_all},
     mem::take,
@@ -266,10 +267,12 @@ impl LevelCompaction {
                     // and skip the last level as  we can't compact it to next level
                     if i < MAX_LEVELS - 1 {
                         merged_enteries = new_li_meta.pop().unwrap().item_list().unwrap();
-                        if !new_li_meta.is_empty() {
+                        let mut tables_to_be_poped = max(6 - i, 2);
+                        while new_li_meta.is_empty() && tables_to_be_poped > 0 {
                             let mut updated_vec = new_li_meta.pop().unwrap().item_list().unwrap();
                             updated_vec.extend(merged_enteries);
-                            merged_enteries = updated_vec
+                            merged_enteries = updated_vec;
+                            tables_to_be_poped -= 1;
                         }
                     } else {
                         // nothing to worry since current iteration is last iteration

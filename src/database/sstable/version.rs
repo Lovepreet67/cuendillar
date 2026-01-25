@@ -7,6 +7,7 @@ use crate::database::{
 
 #[derive(Clone)]
 pub struct Version {
+    poisened: bool,
     levels: Vec<Vec<SSTMetadata>>,
 }
 impl Debug for Version {
@@ -23,7 +24,10 @@ impl Debug for Version {
 
 impl Version {
     pub fn new(levels: Vec<Vec<SSTMetadata>>) -> Self {
-        Self { levels }
+        Self {
+            poisened: false,
+            levels,
+        }
     }
     pub fn add_l0_table(mut self, table: SSTMetadata) -> Self {
         if self.levels.len() > 0 {
@@ -41,7 +45,17 @@ impl Version {
             Some(&self.levels[level])
         }
     }
+    pub fn get_level_tables_owned(&mut self, level: usize) -> Option<Vec<SSTMetadata>> {
+        if self.levels.len() <= level {
+            None
+        } else {
+            Some(std::mem::take(&mut self.levels[level]))
+        }
+    }
     pub fn find(&self, key: &[u8]) -> Result<Option<OwnedEntry>, SSTableError> {
+        if self.poisened {
+            return Err(SSTableError::PoisonedError);
+        }
         // for l0 we will check for each and every sstable
         if self.levels.len() == 0 {
             return Ok(None);

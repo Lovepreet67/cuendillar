@@ -2,6 +2,7 @@
 pub enum SSTableError {
     IoError(std::io::Error),
     UuidError(uuid::Error),
+    PoisonedError,
 }
 
 impl From<std::io::Error> for SSTableError {
