@@ -1,0 +1,26 @@
+root_dir = "./table"
+
+[wal]
+variant = "default"
+
+[memtable]
+variant = "default"
+max_memtable_size = 1000
+
+[sstable]
+variant = "default"
+
+[bloom]
+variant = "default"
+key_size = 100
+
+[index]
+variant = "default"
+
+
+[compaction]
+variant = "default"
+min_l0_file_count = 3
+base_entries_per_table = 100
+level_size_growth_factor = 4
+max_level_count = 5
