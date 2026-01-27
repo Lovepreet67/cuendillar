@@ -4,7 +4,8 @@ root_dir = "./table"
 variant = "default"
 
 [memtable]
-variant = "default"
+variant = "vector"
+manager_variant = "default"
 max_memtable_size = 1000
 
 [sstable]

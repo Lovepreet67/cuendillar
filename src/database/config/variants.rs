@@ -9,6 +9,12 @@ pub enum WALVariant {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MemtableVariant {
+    Vector,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MemtableMangerVariant {
     Default,
 }
 

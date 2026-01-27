@@ -14,8 +14,8 @@ pub struct DefaultWAL {
     wal_dir: PathBuf,
     metadata_file: File,
 }
-impl WAL for DefaultWAL {
-    fn new(wal_dir: PathBuf) -> Result<Self, WALError> {
+impl DefaultWAL {
+    pub fn new(wal_dir: PathBuf) -> Result<Self, WALError> {
         if !wal_dir.exists() {
             create_dir_all(&wal_dir)?;
         }
@@ -32,6 +32,8 @@ impl WAL for DefaultWAL {
             active_log: None,
         })
     }
+}
+impl WAL for DefaultWAL {
     fn rotate(&mut self, id: Option<uuid::Uuid>) -> Result<(), WALError> {
         let id = id.unwrap_or_else(|| uuid::Uuid::new_v4());
         let new_log_file_id = format!("{}.wal", id);

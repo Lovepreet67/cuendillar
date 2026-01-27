@@ -1,33 +1,33 @@
 use std::collections::VecDeque;
 
-use crate::database::memtable::{Memtable, errors::MemtableError, manager::MemtableManager};
+use crate::database::memtable::{
+    Memtable, errors::MemtableError, manager::MemtableManager, vector_memtable::VectorMemtable,
+};
 
-pub struct DefaultManger<T>
-where
-    T: Memtable,
-{
-    active_memtable: T,
-    immutable_memtables: VecDeque<T>,
+pub struct DefaultManger {
+    active_memtable: Box<dyn Memtable>,
+    immutable_memtables: VecDeque<Box<dyn Memtable>>,
     max_size: u64,
+    memtable_generator: Box<dyn Fn(Option<uuid::Uuid>) -> Box<dyn Memtable>>,
 }
 
-impl<T> DefaultManger<T>
-where
-    T: Memtable,
-{
-    pub fn intialize(active_memtable: T, immutable_memtables: VecDeque<T>, max_size: u64) -> Self {
+impl DefaultManger {
+    pub fn intialize(
+        active_memtable: Box<dyn Memtable>,
+        immutable_memtables: VecDeque<Box<dyn Memtable>>,
+        max_size: u64,
+        memtable_generator: Box<dyn Fn(Option<uuid::Uuid>) -> Box<dyn Memtable>>,
+    ) -> Self {
         Self {
             active_memtable,
             immutable_memtables,
             max_size,
+            memtable_generator,
         }
     }
 }
 
-impl<T> MemtableManager for DefaultManger<T>
-where
-    T: Memtable,
-{
+impl MemtableManager for DefaultManger {
     fn find(
         &self,
         key: &[u8],
@@ -55,19 +55,19 @@ where
         &mut self,
         id: uuid::Uuid,
     ) -> Result<(), crate::database::memtable::errors::MemtableError> {
-        let new_memtable = T::new(Some(id));
+        let new_memtable = (self.memtable_generator)(Some(id));
         let current_active_memtable = std::mem::replace(&mut self.active_memtable, new_memtable);
         self.immutable_memtables.push_front(current_active_memtable);
         Ok(())
     }
-    fn iter(&self) -> impl std::iter::Iterator<Item = crate::database::Entry> {
-        self.active_memtable.iter()
+    fn iter(&self) -> Box<dyn std::iter::Iterator<Item = crate::database::Entry> + '_> {
+        Box::new(self.active_memtable.iter())
     }
     fn require_rotation(&self) -> bool {
         self.active_memtable.size() > self.max_size
     }
-    fn get_memtable_to_push(&self) -> Option<&impl Memtable> {
-        return self.immutable_memtables.back();
+    fn get_memtable_to_push(&self) -> Option<&dyn Memtable> {
+        return self.immutable_memtables.back().map(|b| b.as_ref());
     }
     fn mark_pushed(&mut self, memetable_id: uuid::Uuid) -> Result<(), MemtableError> {
         if let Some(first_memtable) = self.immutable_memtables.front() {

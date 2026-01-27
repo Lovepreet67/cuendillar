@@ -57,14 +57,15 @@ pub struct VectorMemtable {
     id: Uuid,
     store: Vec<VectorMemtableEntry>,
 }
-
-impl Memtable for VectorMemtable {
-    fn new(id: Option<Uuid>) -> Self {
+impl VectorMemtable {
+    pub fn new(id: Option<Uuid>) -> Self {
         Self {
             id: id.unwrap_or_else(|| Uuid::new_v4()),
             store: Vec::new(),
         }
     }
+}
+impl Memtable for VectorMemtable {
     fn get_id(&self) -> &Uuid {
         &self.id
     }
@@ -79,7 +80,7 @@ impl Memtable for VectorMemtable {
         }
         return Ok(None);
     }
-    fn iter(&self) -> impl std::iter::Iterator<Item = Entry<'_>> + MemtableIterator {
+    fn iter(&self) -> Box<dyn MemtableIterator<Item = Entry<'_>> + '_> {
         // we will store a copy of enteries in sorted order
         let mut seen = HashSet::new();
         let mut entries = Vec::new();
@@ -93,7 +94,7 @@ impl Memtable for VectorMemtable {
 
         entries.sort_by(|a, b| a.key.cmp(&b.key));
 
-        VectorMemtableIterator { curr: 0, entries }
+        Box::new(VectorMemtableIterator { curr: 0, entries })
     }
     fn num_enteries(&self) -> u64 {
         self.store.len() as u64

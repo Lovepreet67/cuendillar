@@ -8,7 +8,8 @@ use once_cell::sync::Lazy;
 use serde::Deserialize;
 
 use crate::database::config::variants::{
-    BloomVariant, CompactionVariant, IndexVariant, MemtableVariant, SSTableVariant, WALVariant,
+    BloomVariant, CompactionVariant, IndexVariant, MemtableMangerVariant, MemtableVariant,
+    SSTableVariant, WALVariant,
 };
 
 pub mod variants;
@@ -21,6 +22,7 @@ pub struct WALConfig {
 #[derive(Debug, Deserialize)]
 pub struct MemtableConfig {
     pub variant: MemtableVariant,
+    pub manager_variant: MemtableMangerVariant,
     pub max_memtable_size: u64,
 }
 #[derive(Debug, Deserialize)]

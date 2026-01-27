@@ -2,7 +2,6 @@ mod errors;
 #[cfg(test)]
 mod tests;
 use std::{
-    collections::VecDeque,
     path::PathBuf,
     str::FromStr,
     sync::{Arc, RwLock},
@@ -10,17 +9,15 @@ use std::{
 
 use crate::database::{
     Entry, OwnedEntry,
+    config::CONFIG,
     db_engine::errors::EngineError,
-    memtable::{
-        Memtable,
-        manager::{MemtableManager, default_manager::DefaultManger},
-        vector_memtable::VectorMemtable,
-    },
+    factory::{memtable::build_memtable_manager, wal::build_wal_manger},
+    memtable::manager::MemtableManager,
     sstable::{
         cleaner::Cleaner, compaction::leveled_compaction::LevelCompaction,
         version_manager::VersionManager,
     },
-    wal::{WAL, default_wal::DefaultWAL, wal_entry::WALEntry},
+    wal::{WAL, wal_entry::WALEntry},
 };
 
 #[derive(Default, Debug)]
@@ -31,8 +28,8 @@ pub struct Metrics {
 }
 
 pub struct Engine {
-    wal_manager: DefaultWAL,
-    memtable_manager: DefaultManger<VectorMemtable>,
+    wal_manager: Box<dyn WAL>,
+    memtable_manager: Box<dyn MemtableManager>,
     version_manager: Arc<RwLock<VersionManager>>,
     write_count: u64,
     pub metrics: Metrics,
@@ -61,9 +58,9 @@ impl Engine {
     }
     pub fn new(root_path: &str) -> Result<Self, EngineError> {
         let uid = uuid::Uuid::new_v4();
-        let first_memtable = VectorMemtable::new(Some(uid));
-        let memetable_manager = DefaultManger::intialize(first_memtable, VecDeque::new(), 500);
-        let mut wal_manager = DefaultWAL::new(PathBuf::from_str(root_path)?.join("wal")).unwrap();
+        let memetable_manager = build_memtable_manager(&CONFIG.memtable, Some(uid))?;
+        let mut wal_manager =
+            build_wal_manger(&CONFIG.wal, PathBuf::from_str(root_path)?.join("wal"))?;
         wal_manager.rotate(Some(uid))?;
         let version_manager = Arc::new(RwLock::new(VersionManager::new(
             PathBuf::from_str(root_path)?.join("sstable"),

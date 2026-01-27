@@ -1,13 +1,14 @@
 use std::{
     fmt::Debug,
     io::{Read, Write},
-    path::PathBuf,
 };
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
+mod config;
 pub mod db_engine;
 mod errors;
+pub mod factory;
 mod memtable;
 mod sstable;
 mod wal;

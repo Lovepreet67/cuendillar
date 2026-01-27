@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::database::{
-    memtable::{Memtable, MemtableIterator},
+    memtable::Memtable,
     sstable::{
         errors::SSTableError,
         metadata::{
@@ -93,7 +93,7 @@ impl VersionManager {
 
     /// This Function doesn't change anything it returns the new version which caller need to to add to version manager
     /// Calling push_version
-    pub fn push_memtable(&self, mt: &impl Memtable) -> Result<SSTMetadata, SSTableError> {
+    pub fn push_memtable(&self, mt: &dyn Memtable) -> Result<SSTMetadata, SSTableError> {
         assert!(mt.size() > 0);
         let new_table_id = format!("{}", mt.get_id());
         let l0_dir = self.root_dir.join("l0");
