@@ -1,6 +1,5 @@
 use crate::database::Entry;
 use crate::database::memtable::Memtable;
-use crate::database::memtable::errors::MemtableError;
 
 mod vector_memtable_test;
 

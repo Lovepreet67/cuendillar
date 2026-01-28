@@ -3,20 +3,20 @@ mod errors;
 mod tests;
 use std::{
     path::PathBuf,
-    str::FromStr,
     sync::{Arc, RwLock},
+    thread::{self, sleep},
+    time::Duration,
 };
 
 use crate::database::{
     Entry, OwnedEntry,
     config::CONFIG,
     db_engine::errors::EngineError,
-    factory::{memtable::build_memtable_manager, wal::build_wal_manger},
-    memtable::manager::MemtableManager,
-    sstable::{
-        cleaner::Cleaner, compaction::leveled_compaction::LevelCompaction,
-        version_manager::VersionManager,
+    factory::{
+        compaction::build_compaction, memtable::build_memtable_manager, wal::build_wal_manger,
     },
+    memtable::manager::MemtableManager,
+    sstable::{cleaner::Cleaner, version_manager::VersionManager},
     wal::{WAL, wal_entry::WALEntry},
 };
 
@@ -56,21 +56,28 @@ impl Engine {
             .mark_pushed(ready_to_push_memetable.get_id().clone())?;
         return Ok(());
     }
-    pub fn new(root_path: &str) -> Result<Self, EngineError> {
+    pub fn new(root_dir: Option<PathBuf>) -> Result<Self, EngineError> {
         let uid = uuid::Uuid::new_v4();
+        let root_dir = root_dir.unwrap_or_else(|| CONFIG.root_dir.clone());
         let memetable_manager = build_memtable_manager(&CONFIG.memtable, Some(uid))?;
-        let mut wal_manager =
-            build_wal_manger(&CONFIG.wal, PathBuf::from_str(root_path)?.join("wal"))?;
+        let mut wal_manager = build_wal_manger(&CONFIG.wal, root_dir.join("wal"))?;
         wal_manager.rotate(Some(uid))?;
-        let version_manager = Arc::new(RwLock::new(VersionManager::new(
-            PathBuf::from_str(root_path)?.join("sstable"),
-        )));
-        let level_compaction = LevelCompaction::new(
+        let sstable_root_dir = root_dir.join("sstable");
+        let version_manager = Arc::new(RwLock::new(VersionManager::new(sstable_root_dir.clone())));
+        let compaction = build_compaction(
+            &CONFIG.compaction,
+            sstable_root_dir,
             version_manager.clone(),
-            3,
-            PathBuf::from_str(root_path)?.join("sstable"),
+            CONFIG.index_block_min_size,
         );
-        level_compaction.init();
+        thread::spawn(move || {
+            loop {
+                sleep(Duration::from_secs(CONFIG.compaction.compaction_interval));
+                if compaction.need_compaction() {
+                    compaction.run_compaction();
+                }
+            }
+        });
         let cleaner = Cleaner::new(version_manager.clone());
         cleaner.init();
         Ok(Self {

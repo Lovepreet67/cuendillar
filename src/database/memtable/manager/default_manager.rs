@@ -1,8 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::database::memtable::{
-    Memtable, errors::MemtableError, manager::MemtableManager, vector_memtable::VectorMemtable,
-};
+use crate::database::memtable::{Memtable, errors::MemtableError, manager::MemtableManager};
 
 pub struct DefaultManger {
     active_memtable: Box<dyn Memtable>,

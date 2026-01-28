@@ -39,5 +39,5 @@ pub enum IndexVariant {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CompactionVariant {
-    Default,
+    Leveled,
 }

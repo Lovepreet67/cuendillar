@@ -5,43 +5,55 @@ use std::{
     mem::take,
     path::PathBuf,
     sync::{Arc, OnceLock, RwLock},
-    thread::{self, sleep},
-    time::Duration,
     vec,
 };
 
 use crate::database::{
     Entry, OwnedEntry,
+    config::CONFIG,
+    factory::{bloom::build_bloom_filter, index::build_index},
     sstable::{
+        compaction::Compaction,
         errors::SSTableError,
-        metadata::{
-            SSTMetadata, SSTableFooter,
-            bloom_filter::{BloomFilter, default_bloom_filter::DefaultBloomFilter},
-            index::{SSTIndex, default_index::DefaultIndex},
-        },
+        metadata::{SSTMetadata, SSTableFooter},
         version::Version,
         version_manager::VersionManager,
     },
 };
-const INDEX_BLOCK_MIN_BYTES: u64 = 400;
-const MAX_LEVELS: u16 = 5;
-const MAX_ENTERIES_PER_TABLE: usize = 100;
 
 pub struct LevelCompaction {
     version_manager: Arc<RwLock<VersionManager>>,
     root_dir: PathBuf,
     min_l0_file_count: u16,
+    max_levels: u16,
+    base_enteries_per_table: u16,
+    level_enteries_growth_factor: u16,
+    level_base_size: u64,
+    level_size_growth_factor: u64,
+    index_block_min_bytes: u64,
 }
 
 impl LevelCompaction {
     pub fn new(
         version_manager: Arc<RwLock<VersionManager>>,
         min_l0_file_count: u16,
+        max_levels: u16,
+        base_enteries_per_table: u16,
+        level_enteries_growth_factor: u16,
+        level_base_size: u64,
+        level_size_growth_factor: u64,
+        index_block_min_bytes: u64,
         root_dir: PathBuf,
     ) -> Self {
         Self {
             version_manager,
             min_l0_file_count,
+            max_levels,
+            base_enteries_per_table,
+            level_enteries_growth_factor,
+            level_base_size,
+            level_size_growth_factor,
+            index_block_min_bytes,
             root_dir,
         }
     }
@@ -60,16 +72,17 @@ impl LevelCompaction {
             .create_new(true)
             .open(&new_table_path)?;
 
-        let mut bloom = DefaultBloomFilter::new(10000, 100);
-        let mut index = DefaultIndex::new();
+        let mut bloom = build_bloom_filter(&CONFIG.bloom);
+        let mut index = build_index(&CONFIG.index);
+
         let mut bytes_encoded = 0;
-        let mut byte_encoded_since_last_index = INDEX_BLOCK_MIN_BYTES;
+        let mut byte_encoded_since_last_index = self.index_block_min_bytes;
         let first_key = enteries[0].get_id().into();
         let last_key = enteries[enteries.len() - 1].get_id().into();
         for i in enteries {
             let i = Entry::from(i);
             // check if entry is eligible for entry
-            if byte_encoded_since_last_index >= INDEX_BLOCK_MIN_BYTES {
+            if byte_encoded_since_last_index >= self.index_block_min_bytes {
                 index.add_entry(i.get_key(), bytes_encoded);
                 byte_encoded_since_last_index = 0;
             }
@@ -81,8 +94,8 @@ impl LevelCompaction {
         index.add_last_offset(bytes_encoded);
         Ok(SSTMetadata::new(
             table_id,
-            bloom,
-            index,
+            bloom.into(),
+            index.into(),
             first_key,
             last_key,
             OnceLock::new(),
@@ -155,7 +168,7 @@ impl LevelCompaction {
             }
             // else if the last key of enteris is smaller than current table it means the entries sstable should be in front of current
             else if enteries.len() > 0 && table.first_key > last_key {
-                let original_enteries = if level < MAX_LEVELS {
+                let original_enteries = if level < self.max_levels {
                     take(&mut enteries)
                 } else {
                     // remove tombstones in max level
@@ -170,10 +183,11 @@ impl LevelCompaction {
                         .collect()
                 };
                 // currently we are merging all enteries to single sstable but it should be multiple tables
-                let max_enteries_per_sstable =
-                    (4 as usize).pow(level.into()) * MAX_ENTERIES_PER_TABLE;
+                let max_enteries_per_sstable = (self.level_enteries_growth_factor)
+                    .pow(level.into())
+                    * self.base_enteries_per_table;
                 // we will split the whole enteries into the block the size calculated
-                for entry_group in original_enteries.chunks(max_enteries_per_sstable) {
+                for entry_group in original_enteries.chunks(max_enteries_per_sstable as usize) {
                     let sstable_meta = self
                         .encode_table(level, uuid::Uuid::new_v4(), entry_group)
                         .expect("Error while creating new sstable");
@@ -187,9 +201,10 @@ impl LevelCompaction {
         }
         // entereis may be added at the end
         if enteries.len() > 0 {
-            let max_enteries_per_sstable = (4 as usize).pow(level.into()) * MAX_ENTERIES_PER_TABLE;
+            let max_enteries_per_sstable = (self.level_enteries_growth_factor).pow(level.into())
+                * self.base_enteries_per_table;
             // we will split the whole enteries into the block the size calculated
-            for entry_group in enteries.chunks(max_enteries_per_sstable) {
+            for entry_group in enteries.chunks(max_enteries_per_sstable as usize) {
                 let sstable_meta = self
                     .encode_table(level, uuid::Uuid::new_v4(), entry_group)
                     .expect("Error while creating new sstable");
@@ -198,109 +213,107 @@ impl LevelCompaction {
         }
         Ok(updated_sst_list)
     }
-    pub fn init(self) {
-        thread::spawn(move || {
-            loop {
-                // we will check for the l0 have table  greater than min files trigger
-                let version_manager = self.version_manager.read().unwrap();
-                let version = version_manager.get_latest_version();
-                let need_compaction = match version.get_level_tables(0) {
-                    Some(tables) if tables.len() < self.min_l0_file_count as usize => false,
-                    None => false,
-                    _ => true,
-                };
-                if !need_compaction {
-                    drop(version_manager);
-                    sleep(Duration::from_secs(5));
-                    continue;
+}
+
+impl Compaction for LevelCompaction {
+    fn need_compaction(&self) -> bool {
+        let version_manager = self.version_manager.read().unwrap();
+        let version = version_manager.get_latest_version();
+        match version.get_level_tables(0) {
+            Some(tables) if tables.len() < self.min_l0_file_count as usize => false,
+            None => false,
+            _ => true,
+        }
+    }
+    fn run_compaction(&self) -> Result<(), SSTableError> {
+        // we will check for the l0 have table  greater than min files trigger
+        let version_manager = self.version_manager.read().unwrap();
+        let version = version_manager.get_latest_version();
+        let version = version.clone();
+        drop(version_manager);
+        // now we have version we will do compaction int he l0
+        // now we get multiple iterator and we will merge them into single table
+        let mut key_seen: HashSet<Vec<u8>> = HashSet::new();
+        let mut merged_enteries = version
+            .get_level_tables(0)
+            .unwrap()
+            .into_iter()
+            .rev()
+            .map(|table| {
+                let mut filterd_entries = vec![];
+                for item in table
+                    .item_list()
+                    .expect("Error while getting item list for table")
+                {
+                    if key_seen.insert(item.get_id().into()) {
+                        filterd_entries.push(item);
+                    }
                 }
-                let version = version.clone();
-                drop(version_manager);
-                // now we have version we will do compaction int he l0
-                // now we get multiple iterator and we will merge them into single table
-                let mut key_seen: HashSet<Vec<u8>> = HashSet::new();
-                let mut merged_enteries = version
-                    .get_level_tables(0)
-                    .unwrap()
-                    .into_iter()
-                    .rev()
-                    .map(|table| {
-                        let mut filterd_entries = vec![];
-                        for item in table
-                            .item_list()
-                            .expect("Error while getting item list for table")
-                        {
-                            if key_seen.insert(item.get_id().into()) {
-                                filterd_entries.push(item);
-                            }
-                        }
-                        return filterd_entries;
-                    })
-                    .flatten()
-                    .collect::<Vec<OwnedEntry>>();
-                merged_enteries.sort_by(|a, b| a.get_id().cmp(&b.get_id()));
-                // no we have a single iterator over all the table in l0
-                // now we will set merge this table to the l1 and so on
-                let mut new_version_lists = vec![vec![]];
-                for i in 1..MAX_LEVELS {
-                    let mut new_li_meta = self
-                        .compact_ln(i.into(), merged_enteries, &version)
-                        .unwrap();
-                    // next level we will choose last table only (for now as it is easy to pop)
-                    let mut li_total_size = 0;
-                    for i in &new_li_meta {
-                        li_total_size += i.get_size();
-                    }
-                    // we will check if the level size is exceeding the threshold (to trigger compaction again)
-                    if li_total_size < (4 as u64).pow(i.into()) * 10000 || i == MAX_LEVELS {
-                        // we will not break to avoid missing levels in the updated version
-                        // we have to push all the levels to the updated version
-                        new_version_lists.push(new_li_meta);
-                        let mut level = (i + 1) as usize;
-                        while let Some(list) = version.get_level_tables(level) {
-                            new_version_lists.push(list.clone());
-                            level += 1;
-                        }
-                        break;
-                    }
-                    // we will pop the last 2 enteries if there are and use them as a new version list
-                    // and skip the last level as  we can't compact it to next level
-                    if i < MAX_LEVELS - 1 {
-                        merged_enteries = new_li_meta.pop().unwrap().item_list().unwrap();
-                        let mut tables_to_be_poped = max(6 - i, 2);
-                        while new_li_meta.is_empty() && tables_to_be_poped > 0 {
-                            let mut updated_vec = new_li_meta.pop().unwrap().item_list().unwrap();
-                            updated_vec.extend(merged_enteries);
-                            merged_enteries = updated_vec;
-                            tables_to_be_poped -= 1;
-                        }
-                    } else {
-                        // nothing to worry since current iteration is last iteration
-                        merged_enteries = vec![];
-                    }
-                    new_version_lists.push(new_li_meta);
-                }
-                let l0_table_ids_compacted = version
-                    .get_level_tables(0)
-                    .unwrap()
-                    .iter()
-                    .map(|x| x.id)
-                    .collect::<HashSet<uuid::Uuid>>();
-                let mut version_manager = self.version_manager.write().unwrap();
-                let updated_l0 = version_manager
-                    .get_latest_version()
-                    .get_level_tables(0)
-                    .unwrap()
-                    .into_iter() // SAFE for now as no other thread is updating version l0 size will be atleast = version we have
-                    .filter(|table| !l0_table_ids_compacted.contains(&table.id))
-                    .map(|table| table.clone())
-                    .collect();
-                new_version_lists[0] = updated_l0;
-                let new_version = Version::new(new_version_lists);
-                version_manager.push_version(new_version);
-                drop(version_manager);
-                sleep(Duration::from_secs(3));
+                return filterd_entries;
+            })
+            .flatten()
+            .collect::<Vec<OwnedEntry>>();
+        merged_enteries.sort_by(|a, b| a.get_id().cmp(&b.get_id()));
+        // no we have a single iterator over all the table in l0
+        // now we will set merge this table to the l1 and so on
+        let mut new_version_lists = vec![vec![]];
+        for i in 1..self.max_levels {
+            let mut new_li_meta = self
+                .compact_ln(i.into(), merged_enteries, &version)
+                .unwrap();
+            // next level we will choose last table only (for now as it is easy to pop)
+            let mut li_total_size = 0;
+            for i in &new_li_meta {
+                li_total_size += i.get_size();
             }
-        });
+            // we will check if the level size is exceeding the threshold (to trigger compaction again)
+            if li_total_size < (self.level_size_growth_factor).pow(i.into()) * self.level_base_size
+                || i == self.max_levels
+            {
+                // we will not break to avoid missing levels in the updated version
+                // we have to push all the levels to the updated version
+                new_version_lists.push(new_li_meta);
+                let mut level = (i + 1) as usize;
+                while let Some(list) = version.get_level_tables(level) {
+                    new_version_lists.push(list.clone());
+                    level += 1;
+                }
+                break;
+            }
+            // we will pop the last 2 enteries if there are and use them as a new version list
+            // and skip the last level as  we can't compact it to next level
+            if i < self.max_levels - 1 {
+                merged_enteries = new_li_meta.pop().unwrap().item_list().unwrap();
+                let mut tables_to_be_poped = max(6 - i, 2);
+                while new_li_meta.is_empty() && tables_to_be_poped > 0 {
+                    let mut updated_vec = new_li_meta.pop().unwrap().item_list().unwrap();
+                    updated_vec.extend(merged_enteries);
+                    merged_enteries = updated_vec;
+                    tables_to_be_poped -= 1;
+                }
+            } else {
+                // nothing to worry since current iteration is last iteration
+                merged_enteries = vec![];
+            }
+            new_version_lists.push(new_li_meta);
+        }
+        let l0_table_ids_compacted = version
+            .get_level_tables(0)
+            .unwrap()
+            .iter()
+            .map(|x| x.id)
+            .collect::<HashSet<uuid::Uuid>>();
+        let mut version_manager = self.version_manager.write().unwrap();
+        let updated_l0 = version_manager
+            .get_latest_version()
+            .get_level_tables(0)
+            .unwrap()
+            .into_iter() // SAFE for now as no other thread is updating version l0 size will be atleast = version we have
+            .filter(|table| !l0_table_ids_compacted.contains(&table.id))
+            .map(|table| table.clone())
+            .collect();
+        new_version_lists[0] = updated_l0;
+        version_manager.push_version(Version::new(new_version_lists));
+        Ok(())
     }
 }

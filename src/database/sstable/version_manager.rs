@@ -7,14 +7,12 @@ use std::{
 };
 
 use crate::database::{
+    config::CONFIG,
+    factory::{bloom::build_bloom_filter, index::build_index},
     memtable::Memtable,
     sstable::{
         errors::SSTableError,
-        metadata::{
-            SSTMetadata, SSTableFooter,
-            bloom_filter::{BloomFilter, default_bloom_filter::DefaultBloomFilter},
-            index::{SSTIndex, default_index::DefaultIndex},
-        },
+        metadata::{SSTMetadata, SSTableFooter},
         version::Version,
     },
 };
@@ -103,8 +101,8 @@ impl VersionManager {
             .append(true)
             .create_new(true)
             .open(&new_table_path)?;
-        let mut bloom = DefaultBloomFilter::new(10000, 100);
-        let mut index = DefaultIndex::new();
+        let mut bloom = build_bloom_filter(&CONFIG.bloom);
+        let mut index = build_index(&CONFIG.index);
         let mut bytes_encoded = 0;
         let mut byte_encoded_since_last_index = INDEX_BLOCK_MIN_BYTES;
         let mt_iter = mt.iter();
@@ -128,8 +126,8 @@ impl VersionManager {
         index.add_last_offset(bytes_encoded);
         let sst_meta = SSTMetadata::new(
             *mt.get_id(),
-            bloom,
-            index,
+            bloom.into(),
+            index.into(),
             first_key,
             last_key,
             OnceLock::new(),

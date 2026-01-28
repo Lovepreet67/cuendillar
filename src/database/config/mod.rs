@@ -17,6 +17,7 @@ pub mod variants;
 #[derive(Debug, Deserialize)]
 pub struct WALConfig {
     pub variant: WALVariant,
+    pub wal_group_sync_size: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -36,19 +37,24 @@ pub struct IndexConfig {
 #[derive(Debug, Deserialize)]
 pub struct BloomConfig {
     pub variant: BloomVariant,
-    pub key_size: u64,
+    pub key_size: u32,
+    pub size: u32,
 }
 #[derive(Debug, Deserialize)]
 pub struct CompactionConfig {
     pub variant: CompactionVariant,
-    pub min_l0_file_count: u64,
-    pub base_entries_per_table: u64,
+    pub compaction_interval: u64,
+    pub min_l0_file_count: u16,
+    pub base_entries_per_table: u16,
+    pub level_entries_growth_factor: u16,
+    pub level_base_size: u64,
     pub level_size_growth_factor: u64,
-    pub max_level_count: u64,
+    pub max_level_count: u16,
 }
 #[derive(Debug, Deserialize)]
 pub struct DbConfig {
     pub root_dir: PathBuf,
+    pub index_block_min_size: u64,
     pub wal: WALConfig,
     pub memtable: MemtableConfig,
     pub sstable: SSTableConfig,

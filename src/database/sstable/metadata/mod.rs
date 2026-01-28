@@ -1,20 +1,18 @@
 use std::{
+    clone::Clone,
     fmt::Debug,
     fs::File,
     io::{Cursor, Read},
     os::unix::fs::FileExt,
     path::PathBuf,
-    sync::OnceLock,
+    sync::{Arc, OnceLock},
 };
 
 use crate::database::{
     OwnedEntry,
     sstable::{
         errors::SSTableError,
-        metadata::{
-            bloom_filter::{BloomFilter, default_bloom_filter::DefaultBloomFilter},
-            index::{SSTIndex, default_index::DefaultIndex},
-        },
+        metadata::{bloom_filter::BloomFilter, index::SSTIndex},
     },
 };
 
@@ -41,8 +39,8 @@ impl SSTableFooter {
 }
 pub struct SSTMetadata {
     pub id: uuid::Uuid,
-    pub bloom: DefaultBloomFilter,
-    pub index: DefaultIndex,
+    pub bloom: Arc<dyn BloomFilter>,
+    pub index: Arc<dyn SSTIndex>,
     pub first_key: Vec<u8>,
     pub last_key: Vec<u8>,
     pub file: OnceLock<File>,
@@ -78,8 +76,8 @@ impl Clone for SSTMetadata {
 impl SSTMetadata {
     pub fn new(
         id: uuid::Uuid,
-        bloom: DefaultBloomFilter,
-        index: DefaultIndex,
+        bloom: Arc<dyn BloomFilter>,
+        index: Arc<dyn SSTIndex>,
         first_key: Vec<u8>,
         last_key: Vec<u8>,
         file: OnceLock<File>,

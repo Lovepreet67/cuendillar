@@ -20,6 +20,13 @@ impl DefaultBloomFilter {
             bloom: BitSet::with_capacity(size as usize),
         }
     }
+    fn deserialize(reader: impl std::io::Read) -> Self {
+        Self {
+            size: 0,
+            bits_per_key: 5,
+            bloom: BitSet::default(),
+        }
+    }
 }
 
 impl BloomFilter for DefaultBloomFilter {
@@ -44,12 +51,5 @@ impl BloomFilter for DefaultBloomFilter {
         }
         return true;
     }
-    fn serialize(&self, buf: impl std::fmt::Write) {}
-    fn deserialize(reader: impl std::io::Read) -> Self {
-        Self {
-            size: 0,
-            bits_per_key: 5,
-            bloom: BitSet::default(),
-        }
-    }
+    fn serialize(&self, buf: &mut dyn std::fmt::Write) {}
 }

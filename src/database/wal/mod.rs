@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use crate::database::{
     OwnedEntry,
     wal::{errors::WALError, wal_entry::WALEntry},
