@@ -72,7 +72,7 @@ impl Engine {
         );
         thread::spawn(move || {
             loop {
-                sleep(Duration::from_secs(CONFIG.compaction.compaction_interval));
+                sleep(Duration::from_millis(CONFIG.compaction.compaction_interval));
                 if compaction.need_compaction() {
                     compaction.run_compaction();
                 }

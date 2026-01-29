@@ -3,7 +3,7 @@ index_block_min_size = 1000
 
 [wal]
 variant = "default"
-wal_group_sync_size = 1000
+wal_group_sync_size = 100
 
 [memtable]
 variant = "vector"
@@ -23,7 +23,7 @@ variant = "default"
 
 
 [compaction]
-compaction_interval = 5
+compaction_interval = 100
 min_l0_file_count = 3
 variant = "leveled"
 base_entries_per_table = 100
