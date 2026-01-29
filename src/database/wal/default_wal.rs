@@ -13,9 +13,11 @@ pub struct DefaultWAL {
     active_log: Option<File>,
     wal_dir: PathBuf,
     metadata_file: File,
+    wal_sync_group_size: u64,
+    counter: u64,
 }
-impl WAL for DefaultWAL {
-    fn new(wal_dir: PathBuf) -> Result<Self, WALError> {
+impl DefaultWAL {
+    pub fn new(wal_dir: PathBuf, wal_sync_group_size: u64) -> Result<Self, WALError> {
         if !wal_dir.exists() {
             create_dir_all(&wal_dir)?;
         }
@@ -30,8 +32,12 @@ impl WAL for DefaultWAL {
             wal_dir,
             metadata_file: f,
             active_log: None,
+            wal_sync_group_size,
+            counter: 0,
         })
     }
+}
+impl WAL for DefaultWAL {
     fn rotate(&mut self, id: Option<uuid::Uuid>) -> Result<(), WALError> {
         let id = id.unwrap_or_else(|| uuid::Uuid::new_v4());
         let new_log_file_id = format!("{}.wal", id);
@@ -58,7 +64,11 @@ impl WAL for DefaultWAL {
         assert!(self.active_log.is_some());
         let active_log = self.active_log.as_mut().unwrap();
         active_log.write_all(entry.payload.as_slice())?;
-        active_log.sync_data()?;
+        self.counter += 1;
+        if self.counter >= self.wal_sync_group_size {
+            self.counter = 0;
+            active_log.sync_data()?;
+        }
         Ok(())
     }
     fn read(&mut self, log_id: &uuid::Uuid) -> Result<Vec<crate::database::OwnedEntry>, WALError> {

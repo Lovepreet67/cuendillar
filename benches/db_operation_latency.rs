@@ -11,6 +11,7 @@ use std::{
     fs::{File, create_dir_all, write},
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
+    str::FromStr,
     thread::sleep,
     time::{Duration, Instant},
 };
@@ -226,7 +227,7 @@ pub fn execute_op(engine: &mut Engine, op: Operation) {
 pub fn run(workload: &str, file: &str) {
     let out_dir = output_dir(workload);
     let dir = TempDir::new().unwrap();
-    let mut engine = Engine::new(dir.path().to_str().unwrap()).unwrap();
+    let mut engine = Engine::new(Some(dir.path().into())).unwrap();
 
     sleep(Duration::from_secs(10)); // warm-up
     let stats = run_workload(&mut engine, file);

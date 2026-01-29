@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use crate::database::{
     OwnedEntry,
     wal::{errors::WALError, wal_entry::WALEntry},
@@ -11,8 +9,7 @@ pub mod errors;
 mod tests;
 pub mod wal_entry;
 
-pub trait WAL: Sized {
-    fn new(root_dir: PathBuf) -> Result<Self, WALError>;
+pub trait WAL {
     fn rotate(&mut self, id: Option<uuid::Uuid>) -> Result<(), WALError>;
     fn append_log(&mut self, entry: WALEntry) -> Result<(), WALError>;
     fn read(&mut self, log_id: &uuid::Uuid) -> Result<Vec<OwnedEntry>, WALError>;

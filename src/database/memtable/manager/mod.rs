@@ -8,8 +8,8 @@ pub trait MemtableManager {
     fn insert(&mut self, e: Entry<'_>) -> Result<(), MemtableError>;
     fn find(&self, key: &[u8]) -> Result<Option<Entry<'_>>, MemtableError>;
     fn rotate(&mut self, id: uuid::Uuid) -> Result<(), MemtableError>;
-    fn iter(&self) -> impl std::iter::Iterator<Item = Entry>;
+    fn iter(&self) -> Box<dyn std::iter::Iterator<Item = Entry> + '_>;
     fn require_rotation(&self) -> bool;
-    fn get_memtable_to_push(&self) -> Option<&impl Memtable>;
+    fn get_memtable_to_push(&self) -> Option<&dyn Memtable>;
     fn mark_pushed(&mut self, memtable_id: uuid::Uuid) -> Result<(), MemtableError>;
 }

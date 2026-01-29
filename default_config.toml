@@ -1,0 +1,33 @@
+root_dir = "./table"
+index_block_min_size = 1000
+
+[wal]
+variant = "default"
+wal_group_sync_size = 100
+
+[memtable]
+variant = "vector"
+manager_variant = "default"
+max_memtable_size = 1000
+
+[sstable]
+variant = "default"
+
+[bloom]
+variant = "default"
+key_size = 100
+size = 1000
+
+[index]
+variant = "default"
+
+
+[compaction]
+compaction_interval = 100
+min_l0_file_count = 3
+variant = "leveled"
+base_entries_per_table = 100
+level_entries_growth_factor = 4
+level_size_growth_factor = 4
+level_base_size = 10000
+max_level_count = 5

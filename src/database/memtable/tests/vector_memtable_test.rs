@@ -1,5 +1,4 @@
 use crate::database::memtable::{
-    Memtable,
     tests::{memtable_test_delete, memtable_test_insert_and_find, memtable_test_iterator},
     vector_memtable::VectorMemtable,
 };

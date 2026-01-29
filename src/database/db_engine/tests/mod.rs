@@ -1,10 +1,10 @@
-use std::fs::remove_dir_all;
+use std::{fs::remove_dir_all, path::PathBuf, str::FromStr};
 
 use crate::database::{Entry, db_engine::Engine};
 
 #[test]
 pub fn db_engine_test_insert_find_and_delete() {
-    let mut engine = Engine::new("./wal").unwrap();
+    let mut engine = Engine::new(Some(PathBuf::from_str("./wal").unwrap())).unwrap();
     engine
         .write(Entry::Row {
             key: b"id1",

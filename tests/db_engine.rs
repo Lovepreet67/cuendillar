@@ -1,6 +1,8 @@
 use std::{
     fs::File,
     io::{BufRead, BufReader, Write},
+    path::PathBuf,
+    str::FromStr,
 };
 
 use cuendillar::database::{OwnedEntry, db_engine::Engine};
@@ -62,7 +64,7 @@ pub fn execute_op(engine: &mut Engine, op: Operation) {
 pub fn db_engine_test() {
     // let dir = TempDir::new().unwrap();
     // let mut engine = Engine::new(dir.path().to_str().unwrap()).unwrap();
-    let mut engine = Engine::new("./table").unwrap();
+    let mut engine = Engine::new(Some(PathBuf::from_str("./table").unwrap())).unwrap();
 
     let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "10k".to_owned());
     let active_workload_file = format!("workload/{}.txt", active_workload);

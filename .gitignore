@@ -1,3 +1,7 @@
 /target
 # /bench_result
 workload/1m.txt
+testing_workload*
+workload_generator*
+test_result.txt
+table

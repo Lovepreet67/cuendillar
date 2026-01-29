@@ -2,25 +2,22 @@ mod errors;
 #[cfg(test)]
 mod tests;
 use std::{
-    collections::VecDeque,
     path::PathBuf,
-    str::FromStr,
     sync::{Arc, RwLock},
+    thread::{self, sleep},
+    time::Duration,
 };
 
 use crate::database::{
     Entry, OwnedEntry,
+    config::CONFIG,
     db_engine::errors::EngineError,
-    memtable::{
-        Memtable,
-        manager::{MemtableManager, default_manager::DefaultManger},
-        vector_memtable::VectorMemtable,
+    factory::{
+        compaction::build_compaction, memtable::build_memtable_manager, wal::build_wal_manger,
     },
-    sstable::{
-        cleaner::Cleaner, compaction::leveled_compaction::LevelCompaction,
-        version_manager::VersionManager,
-    },
-    wal::{WAL, default_wal::DefaultWAL, wal_entry::WALEntry},
+    memtable::manager::MemtableManager,
+    sstable::{cleaner::Cleaner, version_manager::VersionManager},
+    wal::{WAL, wal_entry::WALEntry},
 };
 
 #[derive(Default, Debug)]
@@ -31,8 +28,8 @@ pub struct Metrics {
 }
 
 pub struct Engine {
-    wal_manager: DefaultWAL,
-    memtable_manager: DefaultManger<VectorMemtable>,
+    wal_manager: Box<dyn WAL>,
+    memtable_manager: Box<dyn MemtableManager>,
     version_manager: Arc<RwLock<VersionManager>>,
     write_count: u64,
     pub metrics: Metrics,
@@ -59,21 +56,28 @@ impl Engine {
             .mark_pushed(ready_to_push_memetable.get_id().clone())?;
         return Ok(());
     }
-    pub fn new(root_path: &str) -> Result<Self, EngineError> {
+    pub fn new(root_dir: Option<PathBuf>) -> Result<Self, EngineError> {
         let uid = uuid::Uuid::new_v4();
-        let first_memtable = VectorMemtable::new(Some(uid));
-        let memetable_manager = DefaultManger::intialize(first_memtable, VecDeque::new(), 500);
-        let mut wal_manager = DefaultWAL::new(PathBuf::from_str(root_path)?.join("wal")).unwrap();
+        let root_dir = root_dir.unwrap_or_else(|| CONFIG.root_dir.clone());
+        let memetable_manager = build_memtable_manager(&CONFIG.memtable, Some(uid))?;
+        let mut wal_manager = build_wal_manger(&CONFIG.wal, root_dir.join("wal"))?;
         wal_manager.rotate(Some(uid))?;
-        let version_manager = Arc::new(RwLock::new(VersionManager::new(
-            PathBuf::from_str(root_path)?.join("sstable"),
-        )));
-        let level_compaction = LevelCompaction::new(
+        let sstable_root_dir = root_dir.join("sstable");
+        let version_manager = Arc::new(RwLock::new(VersionManager::new(sstable_root_dir.clone())));
+        let compaction = build_compaction(
+            &CONFIG.compaction,
+            sstable_root_dir,
             version_manager.clone(),
-            3,
-            PathBuf::from_str(root_path)?.join("sstable"),
+            CONFIG.index_block_min_size,
         );
-        level_compaction.init();
+        thread::spawn(move || {
+            loop {
+                sleep(Duration::from_millis(CONFIG.compaction.compaction_interval));
+                if compaction.need_compaction() {
+                    compaction.run_compaction();
+                }
+            }
+        });
         let cleaner = Cleaner::new(version_manager.clone());
         cleaner.init();
         Ok(Self {

@@ -7,14 +7,12 @@ use std::{
 };
 
 use crate::database::{
-    memtable::{Memtable, MemtableIterator},
+    config::CONFIG,
+    factory::{bloom::build_bloom_filter, index::build_index},
+    memtable::Memtable,
     sstable::{
         errors::SSTableError,
-        metadata::{
-            SSTMetadata, SSTableFooter,
-            bloom_filter::{BloomFilter, default_bloom_filter::DefaultBloomFilter},
-            index::{SSTIndex, default_index::DefaultIndex},
-        },
+        metadata::{SSTMetadata, SSTableFooter},
         version::Version,
     },
 };
@@ -93,7 +91,7 @@ impl VersionManager {
 
     /// This Function doesn't change anything it returns the new version which caller need to to add to version manager
     /// Calling push_version
-    pub fn push_memtable(&self, mt: &impl Memtable) -> Result<SSTMetadata, SSTableError> {
+    pub fn push_memtable(&self, mt: &dyn Memtable) -> Result<SSTMetadata, SSTableError> {
         assert!(mt.size() > 0);
         let new_table_id = format!("{}", mt.get_id());
         let l0_dir = self.root_dir.join("l0");
@@ -103,8 +101,8 @@ impl VersionManager {
             .append(true)
             .create_new(true)
             .open(&new_table_path)?;
-        let mut bloom = DefaultBloomFilter::new(10000, 100);
-        let mut index = DefaultIndex::new();
+        let mut bloom = build_bloom_filter(&CONFIG.bloom);
+        let mut index = build_index(&CONFIG.index);
         let mut bytes_encoded = 0;
         let mut byte_encoded_since_last_index = INDEX_BLOCK_MIN_BYTES;
         let mt_iter = mt.iter();
@@ -128,8 +126,8 @@ impl VersionManager {
         index.add_last_offset(bytes_encoded);
         let sst_meta = SSTMetadata::new(
             *mt.get_id(),
-            bloom,
-            index,
+            bloom.into(),
+            index.into(),
             first_key,
             last_key,
             OnceLock::new(),
