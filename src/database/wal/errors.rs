@@ -1,11 +1,14 @@
-#[derive(Debug)]
+use std::path::PathBuf;
+
+#[derive(Debug, Clone)]
 pub enum WALError {
-    IOError(std::io::Error),
+    IOError(String),
     CrrouptedMetadataFile(String),
+    UnexpectedEndOfFile(PathBuf),
 }
 impl From<std::io::Error> for WALError {
     fn from(value: std::io::Error) -> Self {
-        WALError::IOError(value)
+        WALError::IOError(value.to_string())
     }
 }
 impl From<uuid::Error> for WALError {

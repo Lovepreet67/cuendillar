@@ -1,6 +1,6 @@
 use std::{fs::remove_dir_all, path::PathBuf, str::FromStr};
 
-use crate::database::wal::{WAL, default_wal::DefaultWAL, tests::test_wal};
+use crate::database::wal::{default_wal::DefaultWAL, tests::test_wal};
 
 #[test]
 fn test_default_wal() {

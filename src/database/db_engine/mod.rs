@@ -50,8 +50,8 @@ impl Engine {
             .push_memtable(ready_to_push_memetable)?;
         self.version_manager.write()?.push_l0_update(sst_meta);
         // signal memetbale manager to remove that memtable
-        self.wal_manager
-            .flush_wal(ready_to_push_memetable.get_id().clone())?;
+        // self.wal_manager
+        //     .flush_wal(ready_to_push_memetable.get_id().clone())?;
         self.memtable_manager
             .mark_pushed(ready_to_push_memetable.get_id().clone())?;
         return Ok(());
@@ -61,7 +61,7 @@ impl Engine {
         let root_dir = root_dir.unwrap_or_else(|| CONFIG.root_dir.clone());
         let memetable_manager = build_memtable_manager(&CONFIG.memtable, Some(uid))?;
         let mut wal_manager = build_wal_manger(&CONFIG.wal, root_dir.join("wal"))?;
-        wal_manager.rotate(Some(uid))?;
+        // wal_manager.rotate(Some(uid))?;
         let sstable_root_dir = root_dir.join("sstable");
         let version_manager = Arc::new(RwLock::new(VersionManager::new(sstable_root_dir.clone())));
         let compaction = build_compaction(
@@ -96,7 +96,7 @@ impl Engine {
             }
             self.push_memetable()?;
         }
-        self.wal_manager.append_log(WALEntry::from_entry(&e))?;
+        self.wal_manager.append_log(&e)?;
         self.memtable_manager.insert(e)?;
         self.write_count += 1;
         Ok(())
@@ -119,7 +119,7 @@ impl Engine {
     pub fn memtable_rotation(&mut self) -> Result<(), EngineError> {
         let uid = uuid::Uuid::new_v4();
         self.memtable_manager.rotate(uid)?;
-        self.wal_manager.rotate(Some(uid))?;
+        // self.wal_manager.rotate(Some(uid))?;
         Ok(())
     }
 }
