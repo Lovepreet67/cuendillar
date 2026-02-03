@@ -23,7 +23,9 @@ pub fn test_wal(wal: &mut impl WAL) {
     ];
 
     for entry in entries.clone() {
-        wal.append_log(&entry).unwrap();
+        let mut payload = Vec::<u8>::new();
+        entry.encode(&mut payload);
+        wal.append_log(&payload).unwrap();
     }
     // let owned_enteries = wal.read(&log_file_ids[0]).unwrap();
     // let read_enteries: Vec<Entry> = owned_enteries.iter().map(|e| e.into()).collect();
