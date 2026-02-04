@@ -206,8 +206,11 @@ mod test {
             vm2.insert(i);
         }
         let v2 = version_manager.push_memtable(&vm2).unwrap();
+        version_manager.push_l0_update(v2);
+        let version = version_manager.get_latest_version();
+
         assert_eq!(
-            v2.find(b"id3").unwrap(),
+            version.find(b"id3").unwrap(),
             Some(
                 Entry::Row {
                     key: b"id3",
@@ -217,7 +220,7 @@ mod test {
             )
         );
         assert_eq!(
-            v2.find(b"id1").unwrap(),
+            version.find(b"id1").unwrap(),
             Some(
                 Entry::Row {
                     key: b"id1",
@@ -226,6 +229,6 @@ mod test {
                 .into(),
             )
         );
-        assert_eq!(v2.find(b"id34").unwrap(), None);
+        assert_eq!(version.find(b"id34").unwrap(), None);
     }
 }

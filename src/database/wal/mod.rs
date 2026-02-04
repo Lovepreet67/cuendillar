@@ -1,7 +1,4 @@
-use crate::database::{
-    OwnedEntry,
-    wal::{errors::WALError, wal_entry::WALEntry},
-};
+use crate::database::{Entry, OwnedEntry, wal::errors::WALError};
 
 pub mod default_wal;
 pub mod errors;
@@ -9,10 +6,13 @@ pub mod errors;
 mod tests;
 pub mod wal_entry;
 
+pub const MAGIC_NUMBER: u64 = 0x123232;
+pub const MAX_PAYLOAD_LEN: u64 = 10000000;
+
 pub trait WAL {
-    fn rotate(&mut self, id: Option<uuid::Uuid>) -> Result<(), WALError>;
-    fn append_log(&mut self, entry: WALEntry) -> Result<(), WALError>;
-    fn read(&mut self, log_id: &uuid::Uuid) -> Result<Vec<OwnedEntry>, WALError>;
-    fn get_wals(&mut self) -> Result<Vec<uuid::Uuid>, WALError>;
-    fn flush_wal(&mut self, id: uuid::Uuid) -> Result<(), WALError>;
+    fn append_log(&mut self, payload: &[u8]) -> Result<u64, WALError>;
+    fn read(&mut self, offset: u64) -> Result<Box<dyn WALIterator>, WALError>;
+    fn flush_wal(&mut self, offset: u64) -> Result<(), WALError>;
 }
+
+pub trait WALIterator: Iterator<Item = Result<Vec<u8>, WALError>> {}

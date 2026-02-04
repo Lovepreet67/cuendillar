@@ -11,7 +11,7 @@ mod errors;
 pub mod factory;
 mod memtable;
 mod sstable;
-mod wal;
+pub mod wal;
 
 #[derive(PartialEq, Clone)]
 pub enum Entry<'a> {

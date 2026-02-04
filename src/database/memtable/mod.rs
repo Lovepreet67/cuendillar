@@ -8,7 +8,7 @@ pub mod manager;
 mod tests;
 pub mod vector_memtable;
 
-pub(crate) trait Memtable {
+pub trait Memtable {
     fn get_id(&self) -> &Uuid;
     fn insert(&mut self, e: Entry);
     fn find(&self, key: &[u8]) -> Result<Option<Entry>, MemtableError>;
