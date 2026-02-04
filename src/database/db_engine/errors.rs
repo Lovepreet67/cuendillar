@@ -27,9 +27,24 @@ impl From<MemtableError> for EngineError {
 impl From<WALError> for EngineError {
     fn from(value: WALError) -> Self {
         match value {
-            WALError::IOError(e) => return EngineError::IoError(e),
-            WALError::CrrouptedMetadataFile(f) => {
-                return EngineError::Internal(format!("Crrouped metadata file for wal, {}", f));
+            WALError::IOError(e) => return EngineError::Internal(e),
+            WALError::UnexpectedEndOfFile(path) => {
+                return EngineError::Internal(format!("File read after EOF, {:?}", path));
+            }
+            WALError::CorruptedEntry(lsn) => {
+                return EngineError::Internal(format!("Curropted entry found at  {}", lsn));
+            }
+            WALError::PayloadLengthOutOfBound(lsn) => {
+                return EngineError::Internal(format!("Curropted payload len found at  {}", lsn));
+            }
+            WALError::InvalidFileName(path) => {
+                return EngineError::Internal(format!(
+                    "File name is not compatible with wal file , {:?}",
+                    path
+                ));
+            }
+            WALError::OffsetUnderflow => {
+                return EngineError::Internal(format!("Offset requested is flushed"));
             }
         };
     }

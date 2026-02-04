@@ -17,7 +17,7 @@ use crate::database::{
     },
     memtable::manager::MemtableManager,
     sstable::{cleaner::Cleaner, version_manager::VersionManager},
-    wal::{WAL, wal_entry::WALEntry},
+    wal::WAL,
 };
 
 #[derive(Default, Debug)]
@@ -96,7 +96,9 @@ impl Engine {
             }
             self.push_memetable()?;
         }
-        self.wal_manager.append_log(&e)?;
+        let mut payload = Vec::new();
+        e.encode(&mut payload)?;
+        self.wal_manager.append_log(&payload)?;
         self.memtable_manager.insert(e)?;
         self.write_count += 1;
         Ok(())

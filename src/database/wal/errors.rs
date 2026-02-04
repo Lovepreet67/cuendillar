@@ -1,12 +1,13 @@
 use std::path::PathBuf;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum WALError {
     IOError(String),
     UnexpectedEndOfFile(PathBuf),
-    corruptedEntry(u64),
+    CorruptedEntry(u64),
     PayloadLengthOutOfBound(u64),
     InvalidFileName(PathBuf),
+    OffsetUnderflow, // this will happen which read request is made for the offset which is flushed i.e first file offset > offset request
 }
 impl From<std::io::Error> for WALError {
     fn from(value: std::io::Error) -> Self {

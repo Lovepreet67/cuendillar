@@ -18,6 +18,8 @@ pub mod variants;
 pub struct WALConfig {
     pub variant: WALVariant,
     pub wal_group_sync_size: u64,
+    pub wal_file_size: u64,
+    pub wal_max_payload_len: u64,
 }
 
 #[derive(Debug, Deserialize)]

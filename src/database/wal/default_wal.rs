@@ -1,13 +1,16 @@
 use std::{
     fs::{File, create_dir_all, read_dir, remove_file},
-    io::{Read, Seek, Write},
+    io::{BufReader, Read, Seek, Write},
     path::PathBuf,
 };
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use crc::Crc;
 
-use crate::database::wal::{MAGIC_NUMBER, MAX_PAYLOAD_LEN, WAL, WALIterator, errors::WALError};
+use crate::database::{
+    config::CONFIG,
+    wal::{MAGIC_NUMBER, WAL, WALIterator, errors::WALError},
+};
 
 fn eight_align_addition(value: u64) -> u64 {
     if value % 8 == 0 {
@@ -21,7 +24,8 @@ pub struct DefaultWAL {
     wal_dir: PathBuf,
     wal_sync_group_size: u64,
     counter: u64,
-    curr_offset: u64, // this will be used for lsn number
+    curr_offset: u64, // this will be used for lsn number, it will be globaly increasing accross files
+    last_rotation_offset: u64, // offset at which last rotation happened
     crc_computer: Crc<u32>,
 }
 impl DefaultWAL {
@@ -36,6 +40,7 @@ impl DefaultWAL {
             wal_sync_group_size,
             counter: 0,
             curr_offset: 0,
+            last_rotation_offset: 0,
             crc_computer: Crc::<u32>::new(&crc::CRC_32_CKSUM),
         };
         let mut files = wal.get_all_files()?;
@@ -48,29 +53,29 @@ impl DefaultWAL {
             (0, new_file)
         } else {
             let (file_offset, file_path) = files.pop().unwrap(); // as we know file.len()>0
-            let mut active_file = File::options().create(true).append(true).open(&file_path)?;
-            let curr_offset = active_file.seek(std::io::SeekFrom::Current(0))?;
-            (file_offset + curr_offset, active_file)
+            let mut active_file = File::options().append(true).open(&file_path)?;
+            let curr_file_offset = active_file.seek(std::io::SeekFrom::End(0))?; // as cursor will be at the end of file (append mode)
+            wal.last_rotation_offset = curr_file_offset; // Marking last rotation offset we will not rotate here because there will be read operation first
+            (file_offset + curr_file_offset, active_file)
         };
         wal.active_log = Some(active_log_file);
         wal.curr_offset = current_offset;
         Ok(wal)
     }
     pub fn rotate(&mut self) -> Result<(), WALError> {
-        //TODO: curr offset is only in file not global offset
-
-        let new_log_file_id = format!("{}.wal", self.curr_offset + 1);
+        let new_log_file_id = format!("{}.wal", self.curr_offset);
         let new_log_file_path = self.wal_dir.join(&new_log_file_id);
         let new_log_file = File::options()
             .create_new(true)
             .append(true)
             .open(new_log_file_path)?;
         if let Some(active_log) = self.active_log.take() {
+            active_log.sync_all()?;
             drop(active_log);
         }
         new_log_file.sync_all()?;
         self.active_log = Some(new_log_file);
-        self.curr_offset = 0;
+        self.last_rotation_offset = self.curr_offset;
         Ok(())
     }
     fn get_all_files(&self) -> Result<Vec<(u64, PathBuf)>, WALError> {
@@ -99,13 +104,19 @@ impl DefaultWAL {
     }
 }
 impl WAL for DefaultWAL {
-    fn append_log(&mut self, payload: &[u8]) -> Result<(), WALError> {
-        if self.active_log.is_none() {
+    fn append_log(&mut self, payload: &[u8]) -> Result<u64, WALError> {
+        if payload.len() as u64 > CONFIG.wal.wal_max_payload_len {
+            return Err(WALError::PayloadLengthOutOfBound(payload.len() as u64));
+        }
+        // do rotation in case of file size exceed
+        if self.active_log.is_none()
+            || self.curr_offset - self.last_rotation_offset > CONFIG.wal.wal_file_size
+        {
             self.rotate()?;
         }
-
         // we will create a buffer localy so that we can do write all
-        let mut local_buff = Vec::new();
+        let mut local_buff = Vec::with_capacity(8 + 4 + 8 + payload.len() + 8 + 8); // last 8 for padding 
+        let sequance_no = self.curr_offset;
         local_buff.write_u64::<BigEndian>(self.curr_offset)?;
         local_buff.write_u32::<BigEndian>(self.crc_computer.checksum(&payload))?;
         local_buff.write_u64::<BigEndian>(payload.len() as u64)?;
@@ -115,7 +126,6 @@ impl WAL for DefaultWAL {
         while local_buff.len() % 8 != 0 {
             local_buff.write_u8(0)?;
         }
-        assert!(self.active_log.is_some());
         let active_log = self.active_log.as_mut().unwrap();
         active_log.write_all(&local_buff)?;
         self.curr_offset += local_buff.len() as u64;
@@ -124,7 +134,7 @@ impl WAL for DefaultWAL {
             self.counter = 0;
             active_log.sync_data()?;
         }
-        Ok(())
+        Ok(sequance_no)
     }
     fn read(&mut self, offset: u64) -> Result<Box<dyn WALIterator>, WALError> {
         let files = self.get_all_files()?;
@@ -135,25 +145,31 @@ impl WAL for DefaultWAL {
                 self.crc_computer.clone(),
             )));
         }
+
+        // file is the first file which have starting offset > the specified offset
+        // so the files that will be contain the logs for specified offset is file_index-1 .. to end
         let mut file_index = 0;
-        while file_index < files.len() && offset > files[file_index].0 {
+        while file_index < files.len() && offset >= files[file_index].0 {
             file_index += 1;
         }
-        // file index always be greater than 0 as we will assume that the last file can contain the specified offset
+        if file_index == 0 {
+            return Err(WALError::OffsetUnderflow);
+        }
         let offset_inside_file = offset - files[file_index - 1].0;
         let files_to_be_included = files
             .into_iter()
-            .skip(file_index)
+            .skip(file_index - 1) // skip files which doesn't contain the offset
             .map(|item| item.1)
             .collect::<Vec<PathBuf>>();
         // now we will open the first file and move the pointer to the lsn to
         let mut active_file = File::options().read(true).open(&files_to_be_included[0])?;
         // we must check if the specified offset is in the file bounderies or not
         // TODO: check if the offset is legal for the specified file or not
+        // Posix allow seeking beyond file EOF we have to check to detect file corruption
         active_file.seek(std::io::SeekFrom::Start(offset_inside_file))?;
         return Ok(Box::new(DefaultWALIterator::new(
             files_to_be_included,
-            Some(active_file),
+            Some(BufReader::new(active_file)),
             self.crc_computer.clone(),
         )));
     }
@@ -178,13 +194,17 @@ impl WAL for DefaultWAL {
 
 pub struct DefaultWALIterator {
     files: Vec<PathBuf>,
-    active_file: Option<File>,
+    active_file: Option<BufReader<File>>,
     error: Option<WALError>,
     checksum_algo: Crc<u32>,
     index: usize,
 }
 impl DefaultWALIterator {
-    pub fn new(files: Vec<PathBuf>, active_file: Option<File>, checksum_algo: Crc<u32>) -> Self {
+    pub fn new(
+        files: Vec<PathBuf>,
+        active_file: Option<BufReader<File>>,
+        checksum_algo: Crc<u32>,
+    ) -> Self {
         Self {
             files,
             active_file,
@@ -193,12 +213,11 @@ impl DefaultWALIterator {
             error: None,
         }
     }
-    fn read_record(&mut self) -> Result<Vec<u8>, WALError> {
+    fn read_record(&mut self) -> Result<Option<Vec<u8>>, WALError> {
         if self.error.is_some() {
             return Err(self.error.clone().unwrap());
         }
         // as if file is not active next should return
-        assert!(self.active_file.is_some());
         // as we know there is some active file
         let active_file = self.active_file.as_mut().unwrap();
         // will read the active file first and assume that the files are in order to which we need to read
@@ -213,10 +232,11 @@ impl DefaultWALIterator {
                         if self.index == self.files.len() {
                             // as there is not files
                             self.active_file = None;
+                            return Ok(None);
                         } else {
                             let next_file =
                                 File::options().read(true).open(&self.files[self.index])?;
-                            self.active_file = Some(next_file);
+                            self.active_file = Some(BufReader::new(next_file));
                         }
                         // TODO: This recursion may cause issues
                         return self.read_record();
@@ -229,7 +249,7 @@ impl DefaultWALIterator {
         };
         let checksum = active_file.read_u32::<BigEndian>()?;
         let payload_len = active_file.read_u64::<BigEndian>()?;
-        if payload_len > MAX_PAYLOAD_LEN {
+        if payload_len > CONFIG.wal.wal_max_payload_len {
             return Err(WALError::PayloadLengthOutOfBound(lsn));
         }
 
@@ -238,16 +258,19 @@ impl DefaultWALIterator {
         // now we will read the magic number and check
         let magic_number = active_file.read_u64::<BigEndian>()?;
         let bytes_read = 8 + 4 + 8 + payload_len + 8;
+
         // after this we will do the 8 allignment
-        active_file.seek(std::io::SeekFrom::Current(
-            eight_align_addition(bytes_read) as i64
-        ))?;
+        let pad = eight_align_addition(bytes_read) as i64;
+        if pad > 0 {
+            let mut skip = [0u8; 8];
+            active_file.read_exact(&mut skip[..pad as usize])?;
+        }
 
         if magic_number != MAGIC_NUMBER || checksum != self.checksum_algo.checksum(&payload) {
-            let error = WALError::corruptedEntry(lsn);
+            let error = WALError::CorruptedEntry(lsn);
             return Err(error);
         }
-        return Ok(payload);
+        return Ok(Some(payload));
     }
 }
 impl Iterator for DefaultWALIterator {
@@ -266,7 +289,10 @@ impl Iterator for DefaultWALIterator {
                 return Some(Err(e));
             }
         };
-        return Some(Ok(payload));
+        match payload {
+            Some(v) => Some(Ok(v)),
+            _ => None,
+        }
     }
 }
 impl WALIterator for DefaultWALIterator {}

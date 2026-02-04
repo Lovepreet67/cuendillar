@@ -4,6 +4,8 @@ index_block_min_size = 1000
 [wal]
 variant = "default"
 wal_group_sync_size = 100
+wal_file_size = 100_00_00_0
+wal_max_payload_len = 1000
 
 [memtable]
 variant = "vector"
