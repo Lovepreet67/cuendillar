@@ -1,12 +1,13 @@
 use std::{
-    fs::File,
+    fs::{File, remove_dir_all},
     io::{BufRead, BufReader, Write},
     path::PathBuf,
     str::FromStr,
+    thread::sleep,
+    time::Duration,
 };
 
 use cuendillar::database::{OwnedEntry, db_engine::Engine};
-use tempfile::TempDir;
 
 pub enum Operation {
     Get(Vec<u8>, bool, Vec<u8>),
@@ -14,25 +15,28 @@ pub enum Operation {
     Del(Vec<u8>),
 }
 
+pub fn get_operation(line: &str) -> Operation {
+    let parts: Vec<&str> = line.split(',').collect();
+    match parts[0] {
+        "GET" => {
+            let hit = parts[2] == "HIT";
+            Operation::Get(
+                parts[1].into(),
+                hit,
+                if hit { parts[3].into() } else { vec![] },
+            )
+        }
+        "PUT" => Operation::Put(parts[1].into(), parts[2].into()),
+        "DEL" => Operation::Del(parts[1].into()),
+        _ => panic!("Unknow operation: {}", line),
+    }
+}
+
 pub fn run_workload(engine: &mut Engine, path: &str) {
     let file = File::open(path).unwrap();
     let reader = BufReader::new(file);
     for line in reader.lines() {
-        let line = line.unwrap();
-        let parts: Vec<&str> = line.split(',').collect();
-        let op = match parts[0] {
-            "GET" => {
-                let hit = parts[2] == "HIT";
-                Operation::Get(
-                    parts[1].into(),
-                    hit,
-                    if hit { parts[3].into() } else { vec![] },
-                )
-            }
-            "PUT" => Operation::Put(parts[1].into(), parts[2].into()),
-            "DEL" => Operation::Del(parts[1].into()),
-            _ => panic!("Unknow operation: {}", line),
-        };
+        let op = get_operation(&line.unwrap());
         execute_op(engine, op);
     }
 }
@@ -63,8 +67,13 @@ pub fn execute_op(engine: &mut Engine, op: Operation) {
 #[test]
 pub fn db_engine_test() {
     // let dir = TempDir::new().unwrap();
-    // let mut engine = Engine::new(dir.path().to_str().unwrap()).unwrap();
-    let mut engine = Engine::new(Some(PathBuf::from_str("./table").unwrap())).unwrap();
+    // let mut engine = Engine::new(Some(dir.path().into())).unwrap();
+    let mut engine = match Engine::new(Some(PathBuf::from_str("./table").unwrap())) {
+        Ok(v) => v,
+        Err(e) => {
+            panic!("{:?}", e)
+        }
+    };
 
     let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "10k".to_owned());
     let active_workload_file = format!("workload/{}.txt", active_workload);
@@ -77,4 +86,38 @@ pub fn db_engine_test() {
         .open("./test_result.txt")
         .unwrap();
     writeln!(output_file, "{:?}", metrics).unwrap();
+    drop(engine);
+    remove_dir_all("./table").unwrap();
+    sleep(Duration::from_secs(10)); // giving time to remove all dir
+}
+
+#[test]
+pub fn db_engine_controlled_recovery_test() {
+    // let dir = TempDir::new().unwrap();
+    // let mut engine = Engine::new(Some(dir.path().into())).unwrap();
+    let mut counter = 1;
+    let mut engine = match Engine::new(Some(PathBuf::from_str("./table").unwrap())) {
+        Ok(v) => Some(v),
+        Err(e) => {
+            panic!("{:?}", e)
+        }
+    };
+    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "10k".to_owned());
+    let active_workload_file = format!("workload/{}.txt", active_workload);
+    println!("Active workload is set to {}", active_workload);
+    let file = File::open(active_workload_file).unwrap();
+    let reader = BufReader::new(file);
+    for line in reader.lines() {
+        // after every 100000 operations we will delte the engine and create new
+        if counter % 99999 == 0 {
+            // we will delte the engine
+            drop(engine);
+            engine = Some(Engine::new(Some(PathBuf::from_str("./table").unwrap())).unwrap());
+        }
+        let op = get_operation(&line.unwrap());
+        execute_op(engine.as_mut().unwrap(), op);
+        counter += 1;
+    }
+    drop(engine);
+    remove_dir_all("./table").unwrap();
 }

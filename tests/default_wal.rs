@@ -72,7 +72,10 @@ pub fn verify_wal(mut wal: Box<dyn WAL>, path: &str) {
                     value: parts[2].as_bytes(),
                 };
                 entry.encode(&mut payload).unwrap();
-                assert_eq!(Some(Ok(payload)), wal_iterator.next());
+                let next = wal_iterator.next();
+                assert!(next.is_some());
+                let (_, recv_payload) = next.unwrap().unwrap();
+                assert_eq!(payload, recv_payload);
             }
             "DEL" => {
                 let mut payload = Vec::new();
@@ -80,7 +83,10 @@ pub fn verify_wal(mut wal: Box<dyn WAL>, path: &str) {
                     key: parts[1].as_bytes(),
                 };
                 entry.encode(&mut payload).unwrap();
-                assert_eq!(Some(Ok(payload)), wal_iterator.next());
+                let next = wal_iterator.next();
+                assert!(next.is_some());
+                let (_, recv_payload) = next.unwrap().unwrap();
+                assert_eq!(payload, recv_payload);
             }
             _ => panic!("Unknow operation: {}", line),
         };

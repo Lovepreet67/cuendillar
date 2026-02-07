@@ -23,7 +23,7 @@ pub fn test_wal_read(wal: &mut impl WAL) {
     let wal_iterator = wal.read(0).unwrap();
     let mut curr: i32 = 0;
     for i in wal_iterator {
-        let val = i.unwrap();
+        let (_, val) = i.unwrap();
         assert_eq!(val, curr.to_be_bytes());
         curr += 1;
     }
@@ -40,7 +40,7 @@ pub fn test_wal_rotation(wal: &mut impl WAL) {
     let wal_iterator = wal.read(0).unwrap();
     let mut curr: u64 = 0;
     for i in wal_iterator {
-        let val = i.unwrap();
+        let (_, val) = i.unwrap();
         assert_eq!(val, curr.to_be_bytes());
         curr += 1;
     }
@@ -65,9 +65,9 @@ pub fn test_wal_flush(wal: &mut impl WAL) {
     assert_eq!(Some(WALError::OffsetUnderflow), wal.read(0).err());
     // now we will read the wal
     let wal_iterator = wal.read(wals_to_flush).unwrap();
-    let mut curr: u64 = iterations / 2;
+    let mut curr: u64 = iterations / 2 + 1; // as wals to flushe will be starting offset of next log 
     for i in wal_iterator {
-        let val = i.unwrap();
+        let (_, val) = i.unwrap();
         assert_eq!(val, curr.to_be_bytes());
         curr += 1;
     }

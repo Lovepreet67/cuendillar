@@ -3,8 +3,8 @@ mod errors;
 mod tests;
 use std::{
     path::PathBuf,
-    sync::{Arc, RwLock},
-    thread::{self, sleep},
+    sync::{Arc, RwLock, atomic::AtomicBool},
+    thread::{self, JoinHandle, sleep},
     time::Duration,
 };
 
@@ -20,7 +20,7 @@ use crate::database::{
     wal::WAL,
 };
 
-#[derive(Default, Debug)]
+#[derive(Default, Clone, Copy, Debug)]
 pub struct Metrics {
     sstable_hits: u64,
     memtable_hits: u64,
@@ -33,6 +33,8 @@ pub struct Engine {
     version_manager: Arc<RwLock<VersionManager>>,
     write_count: u64,
     pub metrics: Metrics,
+    workers: Vec<JoinHandle<u64>>,
+    under_shutdown: Arc<AtomicBool>,
 }
 
 impl Engine {
@@ -48,10 +50,12 @@ impl Engine {
             .version_manager
             .read()?
             .push_memtable(ready_to_push_memetable)?;
-        self.version_manager.write()?.push_l0_update(sst_meta);
+        self.version_manager
+            .write()?
+            .push_l0_update(sst_meta, ready_to_push_memetable.get_wal_offset());
         // signal memetbale manager to remove that memtable
-        // self.wal_manager
-        //     .flush_wal(ready_to_push_memetable.get_id().clone())?;
+        self.wal_manager
+            .flush_wal(ready_to_push_memetable.get_wal_offset())?; // avoiding flush foor now
         self.memtable_manager
             .mark_pushed(ready_to_push_memetable.get_id().clone())?;
         return Ok(());
@@ -60,33 +64,64 @@ impl Engine {
         let uid = uuid::Uuid::new_v4();
         let root_dir = root_dir.unwrap_or_else(|| CONFIG.root_dir.clone());
         let memetable_manager = build_memtable_manager(&CONFIG.memtable, Some(uid))?;
-        let mut wal_manager = build_wal_manger(&CONFIG.wal, root_dir.join("wal"))?;
+        // wal manager will handle its own recovery
+        let wal_manager = build_wal_manger(&CONFIG.wal, root_dir.join("wal"))?;
         // wal_manager.rotate(Some(uid))?;
         let sstable_root_dir = root_dir.join("sstable");
-        let version_manager = Arc::new(RwLock::new(VersionManager::new(sstable_root_dir.clone())));
+        // version manager will handle its own recovery
+        let version_manager = Arc::new(RwLock::new(VersionManager::new(sstable_root_dir.clone())?));
+        // here will come the recovery process
+        // read the entries from the wal and push them to memtable without any sstable push
+        //  at the end we have active memtable and and immutable memtables in the memetable manager
+        // then we can start the engine to serve the queries
+
+        // now we know have both version manager and wal_manager now we will read the entries from wal manger and write it to engine
+        let mut engine = Self {
+            wal_manager: wal_manager,
+            memtable_manager: memetable_manager,
+            version_manager: version_manager.clone(),
+            write_count: 0,
+            metrics: Metrics::default(),
+            workers: Vec::default(),
+            under_shutdown: Arc::new(AtomicBool::new(false)),
+        };
+        let last_commited_offset = version_manager
+            .read()?
+            .get_latest_version()
+            .get_commited_wal_offset();
+        let entries = engine.wal_manager.read(last_commited_offset)?;
+        for entry in entries {
+            if let Ok((lsn, payload)) = entry {
+                let entry = OwnedEntry::decode(&mut payload.as_slice())?;
+                engine.memtable_manager.insert((&entry).into(), lsn)?;
+            } else {
+                panic!("Error while reading the wal")
+            }
+        }
+
         let compaction = build_compaction(
             &CONFIG.compaction,
             sstable_root_dir,
             version_manager.clone(),
             CONFIG.index_block_min_size,
         );
-        thread::spawn(move || {
+        let under_shutdown = engine.under_shutdown.clone();
+        engine.workers.push(thread::spawn(move || {
             loop {
+                if under_shutdown.load(std::sync::atomic::Ordering::Relaxed) {
+                    return 0;
+                }
                 sleep(Duration::from_millis(CONFIG.compaction.compaction_interval));
                 if compaction.need_compaction() {
                     compaction.run_compaction();
                 }
             }
-        });
-        let cleaner = Cleaner::new(version_manager.clone());
-        cleaner.init();
-        Ok(Self {
-            wal_manager: wal_manager,
-            memtable_manager: memetable_manager,
-            version_manager: version_manager.clone(),
-            write_count: 0,
-            metrics: Metrics::default(),
-        })
+        }));
+        let under_shutdown = engine.under_shutdown.clone();
+
+        let cleaner = Cleaner::new(version_manager.clone(), under_shutdown);
+        engine.workers.push(cleaner.init());
+        Ok(engine)
     }
     pub fn write(&mut self, e: Entry) -> Result<(), EngineError> {
         self.metrics.write_count += 1;
@@ -98,8 +133,8 @@ impl Engine {
         }
         let mut payload = Vec::new();
         e.encode(&mut payload)?;
-        self.wal_manager.append_log(&payload)?;
-        self.memtable_manager.insert(e)?;
+        let wal_offset = self.wal_manager.append_log(&payload)?;
+        self.memtable_manager.insert(e, wal_offset)?;
         self.write_count += 1;
         Ok(())
     }
@@ -121,7 +156,16 @@ impl Engine {
     pub fn memtable_rotation(&mut self) -> Result<(), EngineError> {
         let uid = uuid::Uuid::new_v4();
         self.memtable_manager.rotate(uid)?;
-        // self.wal_manager.rotate(Some(uid))?;
         Ok(())
+    }
+}
+
+impl Drop for Engine {
+    fn drop(&mut self) {
+        self.under_shutdown
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        while let Some(worker) = self.workers.pop() {
+            worker.join().unwrap();
+        }
     }
 }

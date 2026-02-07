@@ -60,6 +60,9 @@ impl From<SSTableError> for EngineError {
             SSTableError::PoisonedError => {
                 return EngineError::Internal("trying to access poisened SStable".into());
             }
+            SSTableError::General(e) => {
+                return EngineError::Internal(e);
+            }
         }
     }
 }
