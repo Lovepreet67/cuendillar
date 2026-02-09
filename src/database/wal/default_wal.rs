@@ -116,7 +116,6 @@ impl WAL for DefaultWAL {
         }
         // we will create a buffer localy so that we can do write all
         let mut local_buff = Vec::with_capacity(8 + 4 + 8 + payload.len() + 8 + 8); // last 8 for padding 
-        let sequance_no = self.curr_offset;
         local_buff.write_u64::<BigEndian>(self.curr_offset)?;
         local_buff.write_u32::<BigEndian>(self.crc_computer.checksum(&payload))?;
         local_buff.write_u64::<BigEndian>(payload.len() as u64)?;
@@ -134,9 +133,9 @@ impl WAL for DefaultWAL {
             self.counter = 0;
             active_log.sync_data()?;
         }
-        Ok(sequance_no)
+        Ok(self.curr_offset)
     }
-    fn read(&mut self, offset: u64) -> Result<Box<dyn WALIterator>, WALError> {
+    fn read(&self, offset: u64) -> Result<Box<dyn WALIterator>, WALError> {
         let files = self.get_all_files()?;
         if files.len() == 0 {
             return Ok(Box::new(DefaultWALIterator::new(
@@ -175,9 +174,10 @@ impl WAL for DefaultWAL {
     }
     fn flush_wal(&mut self, offset: u64) -> Result<(), WALError> {
         // we will delete all the files which contain offset less than the offset provided and remove them
+        let max_offset_to_be_flushed = offset - 1;
         let files = self.get_all_files()?;
         let mut file_index = 0;
-        while file_index < files.len() && offset > files[file_index].0 {
+        while file_index < files.len() && max_offset_to_be_flushed > files[file_index].0 {
             file_index += 1;
         }
         // we will only delete files which are at index < file_index - 1
@@ -213,7 +213,7 @@ impl DefaultWALIterator {
             error: None,
         }
     }
-    fn read_record(&mut self) -> Result<Option<Vec<u8>>, WALError> {
+    fn read_record(&mut self) -> Result<Option<(u64, Vec<u8>)>, WALError> {
         if self.error.is_some() {
             return Err(self.error.clone().unwrap());
         }
@@ -270,11 +270,11 @@ impl DefaultWALIterator {
             let error = WALError::CorruptedEntry(lsn);
             return Err(error);
         }
-        return Ok(Some(payload));
+        return Ok(Some((lsn, payload)));
     }
 }
 impl Iterator for DefaultWALIterator {
-    type Item = Result<Vec<u8>, WALError>;
+    type Item = Result<(u64, Vec<u8>), WALError>;
     fn next(&mut self) -> Option<Self::Item> {
         if self.active_file.is_none() {
             return None;

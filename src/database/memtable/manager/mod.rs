@@ -5,7 +5,7 @@ use crate::database::{
 pub mod default_manager;
 
 pub trait MemtableManager {
-    fn insert(&mut self, e: Entry<'_>) -> Result<(), MemtableError>;
+    fn insert(&mut self, e: Entry<'_>, wal_offset: u64) -> Result<(), MemtableError>;
     fn find(&self, key: &[u8]) -> Result<Option<Entry<'_>>, MemtableError>;
     fn rotate(&mut self, id: uuid::Uuid) -> Result<(), MemtableError>;
     fn iter(&self) -> Box<dyn std::iter::Iterator<Item = Entry> + '_>;

@@ -2,20 +2,25 @@ use std::{
     cmp::max,
     collections::HashSet,
     fs::{File, create_dir_all},
+    io::Write,
     mem::take,
     path::PathBuf,
     sync::{Arc, OnceLock, RwLock},
     vec,
 };
 
+use byteorder::{BigEndian, WriteBytesExt};
+
 use crate::database::{
     Entry, OwnedEntry,
     config::CONFIG,
-    factory::{bloom::build_bloom_filter, index::build_index},
     sstable::{
         compaction::Compaction,
         errors::SSTableError,
-        metadata::{SSTMetadata, SSTableFooter},
+        metadata::{
+            SSTMetadata, SSTableFooter, SSTableKeyRange, bloom_filter::bloom_factory::BloomFactory,
+            index::index_factory::IndexFactory,
+        },
         version::Version,
         version_manager::VersionManager,
     },
@@ -72,8 +77,8 @@ impl LevelCompaction {
             .create_new(true)
             .open(&new_table_path)?;
 
-        let mut bloom = build_bloom_filter(&CONFIG.bloom);
-        let mut index = build_index(&CONFIG.index);
+        let mut bloom = BloomFactory::build_bloom_filter(&CONFIG.bloom);
+        let mut index = IndexFactory::build_index(&CONFIG.index);
 
         let mut bytes_encoded = 0;
         let mut byte_encoded_since_last_index = self.index_block_min_bytes;
@@ -92,16 +97,49 @@ impl LevelCompaction {
             bloom.add(i.get_key());
         }
         index.add_last_offset(bytes_encoded);
+
+        // now we will serialize the bloom filter
+        // first we will write the name of bloom filter for deserilization
+        let mut bloom_filter_size = 0;
+        let bloom_name = bloom.get_name().as_bytes();
+        writer.write_u16::<BigEndian>(bloom_name.len() as u16)?;
+        bloom_filter_size += 2;
+        writer.write_all(bloom_name)?;
+        bloom_filter_size += bloom_name.len() as u64;
+        bloom_filter_size += bloom.serialize(&mut writer)?;
+
+        // now we will serialize the index
+        // first we will write the name of index for deserilization
+        let mut index_size = 0;
+        let index_name = index.get_name().as_bytes();
+        writer.write_u16::<BigEndian>(index_name.len() as u16)?;
+        index_size += 2;
+        writer.write_all(index_name)?;
+        index_size += index_name.len() as u64;
+        index_size += index.serialize(&mut writer)?;
+        // now we will write the keyrange block
+        let key_range = SSTableKeyRange {
+            first_key,
+            last_key,
+        };
+        let key_range_block_size = key_range.serialize(&mut writer)?;
+        // now we will create a serialize footer
+        let footer = SSTableFooter::new(
+            bytes_encoded,
+            bloom_filter_size,
+            index_size,
+            key_range_block_size,
+        );
+        footer.seriealize(&mut writer)?;
         Ok(SSTMetadata::new(
             table_id,
             bloom.into(),
             index.into(),
-            first_key,
-            last_key,
+            key_range.first_key,
+            key_range.last_key,
             OnceLock::new(),
             new_table_path,
-            // TODO: encode the bytes_encoded and bloom filter to fil
-            SSTableFooter::new(bytes_encoded, 0, 0),
+            footer,
         ))
     }
 
@@ -153,10 +191,10 @@ impl LevelCompaction {
 
         for table in ln_tables {
             // we will check using first and last key
-            if (table.first_key <= first_key && table.last_key >= first_key)
-                || (table.first_key <= last_key && table.last_key >= last_key)
-                || (first_key <= table.first_key && last_key >= table.first_key)
-                || (first_key <= table.last_key && last_key >= table.last_key)
+            if (table.key_range.first_key <= first_key && table.key_range.last_key >= first_key)
+                || (table.key_range.first_key <= last_key && table.key_range.last_key >= last_key)
+                || (first_key <= table.key_range.first_key && last_key >= table.key_range.first_key)
+                || (first_key <= table.key_range.last_key && last_key >= table.key_range.last_key)
             {
                 // we need to merge this into enteries
                 // we have two list both sorted and
@@ -167,7 +205,7 @@ impl LevelCompaction {
                 last_key = enteries[enteries.len() - 1].get_id().into();
             }
             // else if the last key of enteris is smaller than current table it means the entries sstable should be in front of current
-            else if enteries.len() > 0 && table.first_key > last_key {
+            else if enteries.len() > 0 && table.key_range.first_key > last_key {
                 let original_enteries = if level < self.max_levels {
                     take(&mut enteries)
                 } else {
@@ -313,7 +351,13 @@ impl Compaction for LevelCompaction {
             .map(|table| table.clone())
             .collect();
         new_version_lists[0] = updated_l0;
-        version_manager.push_version(Version::new(new_version_lists));
+        let new_version = Version::new(
+            new_version_lists,
+            version_manager
+                .get_latest_version()
+                .get_commited_wal_offset(),
+        );
+        version_manager.push_version(new_version)?;
         Ok(())
     }
 }

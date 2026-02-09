@@ -30,10 +30,28 @@ pub enum BloomVariant {
     Default,
 }
 
+impl From<&str> for BloomVariant {
+    fn from(value: &str) -> Self {
+        match value {
+            "default" => BloomVariant::Default,
+            _ => BloomVariant::Default,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum IndexVariant {
     Default,
+}
+
+impl From<&str> for IndexVariant {
+    fn from(value: &str) -> Self {
+        match value {
+            "default" => IndexVariant::Default,
+            _ => IndexVariant::Default,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]

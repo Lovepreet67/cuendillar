@@ -55,11 +55,13 @@ impl<'a> From<&'a VectorMemtableEntry> for Entry<'a> {
 }
 pub struct VectorMemtable {
     id: Uuid,
+    wal_offset: u64,
     store: Vec<VectorMemtableEntry>,
 }
 impl VectorMemtable {
     pub fn new(id: Option<Uuid>) -> Self {
         Self {
+            wal_offset: 0,
             id: id.unwrap_or_else(|| Uuid::new_v4()),
             store: Vec::new(),
         }
@@ -69,7 +71,8 @@ impl Memtable for VectorMemtable {
     fn get_id(&self) -> &Uuid {
         &self.id
     }
-    fn insert(&mut self, e: Entry) {
+    fn insert(&mut self, e: Entry, wal_offset: u64) {
+        self.wal_offset = wal_offset;
         self.store.push(e.into());
     }
     fn find(&self, key: &[u8]) -> Result<Option<Entry>, MemtableError> {
@@ -105,6 +108,9 @@ impl Memtable for VectorMemtable {
             totalSize += i.size();
         }
         totalSize as u64
+    }
+    fn get_wal_offset(&self) -> u64 {
+        self.wal_offset
     }
 }
 

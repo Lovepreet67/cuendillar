@@ -45,8 +45,9 @@ impl MemtableManager for DefaultManger {
     fn insert(
         &mut self,
         e: crate::database::Entry<'_>,
+        wal_offset: u64,
     ) -> Result<(), crate::database::memtable::errors::MemtableError> {
-        self.active_memtable.insert(e);
+        self.active_memtable.insert(e, wal_offset);
         Ok(())
     }
     fn rotate(

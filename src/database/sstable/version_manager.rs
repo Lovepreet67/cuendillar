@@ -1,18 +1,22 @@
 use std::{
     collections::{HashSet, VecDeque},
     fs::{File, create_dir_all},
-    io::Write,
+    io::{Seek, Write},
     path::PathBuf,
     sync::{Arc, OnceLock},
 };
 
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+
 use crate::database::{
     config::CONFIG,
-    factory::{bloom::build_bloom_filter, index::build_index},
     memtable::Memtable,
     sstable::{
         errors::SSTableError,
-        metadata::{SSTMetadata, SSTableFooter},
+        metadata::{
+            SSTMetadata, SSTableFooter, SSTableKeyRange, bloom_filter::bloom_factory::BloomFactory,
+            index::index_factory::IndexFactory,
+        },
         version::Version,
     },
 };
@@ -25,23 +29,40 @@ pub struct VersionManager {
 const INDEX_BLOCK_MIN_BYTES: u64 = 400;
 
 impl VersionManager {
-    pub fn new(root_dir: PathBuf) -> Self {
+    pub fn new(root_dir: PathBuf) -> Result<Self, SSTableError> {
         create_dir_all(&root_dir).unwrap();
-        let version_file = File::options()
+        let mut version_file = File::options()
             .create(true)
-            .append(true)
+            .write(true)
+            .read(true)
             .open(root_dir.join("versions.txt"))
             // .open("versions.txt")
             .unwrap();
         let mut versions = VecDeque::new();
-        let v0 = Arc::new(Version::new(Vec::default()));
-        versions.push_back(v0);
-        Self {
+
+        // if the version file is not empty we need to recover
+        let v0 = if version_file.metadata()?.len() > 0 {
+            // here comes the recovery
+            // first we will read the starting offset of the latest version
+            version_file.seek(std::io::SeekFrom::End(-8))?;
+            let latest_version_starting_offset = version_file.read_u64::<BigEndian>()?;
+            // move the file pointer to that version
+            version_file.seek(std::io::SeekFrom::Start(latest_version_starting_offset))?;
+            // now can the version to encode
+            let v0 = Version::decode(&mut version_file, &root_dir)?;
+            // move the file pointer to the end
+            version_file.seek(std::io::SeekFrom::End(0))?;
+            v0
+        } else {
+            Version::new(Vec::default(), 0)
+        };
+        versions.push_back(Arc::new(v0));
+        Ok(Self {
             root_dir,
             // we will insert version which doesn't contain any sstable
             versions,
             version_file,
-        }
+        })
     }
     pub fn get_latest_version(&self) -> &Version {
         assert!(self.versions.len() > 0);
@@ -101,8 +122,8 @@ impl VersionManager {
             .append(true)
             .create_new(true)
             .open(&new_table_path)?;
-        let mut bloom = build_bloom_filter(&CONFIG.bloom);
-        let mut index = build_index(&CONFIG.index);
+        let mut bloom = BloomFactory::build_bloom_filter(&CONFIG.bloom);
+        let mut index = IndexFactory::build_index(&CONFIG.index);
         let mut bytes_encoded = 0;
         let mut byte_encoded_since_last_index = INDEX_BLOCK_MIN_BYTES;
         let mt_iter = mt.iter();
@@ -124,34 +145,77 @@ impl VersionManager {
             bloom.add(i.get_key());
         }
         index.add_last_offset(bytes_encoded);
+        // now we have written all the entries to file
+
+        // now we will serialize the bloom filter
+        // first we will write the name of bloom filter for deserilization
+        let mut bloom_filter_size = 0;
+        let bloom_name = bloom.get_name().as_bytes();
+        writer.write_u16::<BigEndian>(bloom_name.len() as u16)?;
+        bloom_filter_size += 2;
+        writer.write_all(bloom_name)?;
+        bloom_filter_size += bloom_name.len() as u64;
+        bloom_filter_size += bloom.serialize(&mut writer)?;
+
+        // now we will serialize the index
+        // first we will write the name of index for deserilization
+        let mut index_size = 0;
+        let index_name = index.get_name().as_bytes();
+        writer.write_u16::<BigEndian>(index_name.len() as u16)?;
+        index_size += 2;
+        writer.write_all(index_name)?;
+        index_size += index_name.len() as u64;
+        index_size += index.serialize(&mut writer)?;
+
+        // now we will add the create and add the SSTableKeyRange
+        let key_range = SSTableKeyRange {
+            first_key,
+            last_key,
+        };
+        let key_range_block_size = key_range.serialize(&mut writer)?;
+
+        // now we will create a serialize footer
+        let footer = SSTableFooter::new(
+            bytes_encoded,
+            bloom_filter_size,
+            index_size,
+            key_range_block_size,
+        );
+        footer.seriealize(&mut writer)?;
         let sst_meta = SSTMetadata::new(
             *mt.get_id(),
             bloom.into(),
             index.into(),
-            first_key,
-            last_key,
+            key_range.first_key,
+            key_range.last_key,
             OnceLock::new(),
             new_table_path,
-            // TODO: encode the bytes_encoded and bloom filter to fil
-            SSTableFooter::new(bytes_encoded, 0, 0),
+            footer,
         );
         // now we will update
         // we will insert this to the the L0 of the latest version
         Ok(sst_meta)
     }
-    pub fn push_l0_update(&mut self, sst_meta: SSTMetadata) {
+    pub fn push_l0_update(&mut self, sst_meta: SSTMetadata, commited_wal_offset: u64) {
         let new_version = if self.versions.len() > 0 {
             let latest_version = self.get_latest_version();
             let original_version = latest_version.clone();
-            original_version.add_l0_table(sst_meta)
+            original_version.add_l0_table(sst_meta, commited_wal_offset)
         } else {
-            Version::new(vec![vec![sst_meta]])
+            Version::new(vec![vec![sst_meta]], commited_wal_offset)
         };
-        self.push_version(new_version);
+        //TODO: Handle this unwrap
+        self.push_version(new_version).unwrap();
     }
 
-    pub fn push_version(&mut self, v: Version) {
-        writeln!(self.version_file, "{:#?}", v).unwrap();
+    pub fn push_version(&mut self, v: Version) -> Result<(), SSTableError> {
+        // writeln!(self.version_file, "{:#?}", v).unwrap();
+        // we will fetch teh starting offset of this version encoding so that we can just read the file from end
+        let starting_offset = self.version_file.seek(std::io::SeekFrom::End(0))?;
+        v.encode(&mut self.version_file)?;
+        self.version_file.write_u64::<BigEndian>(starting_offset)?;
+        self.version_file.sync_all()?;
         self.versions.push_back(Arc::new(v));
+        Ok(())
     }
 }

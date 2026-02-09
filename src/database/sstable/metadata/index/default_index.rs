@@ -44,8 +44,6 @@ impl DefaultIndex {
         }
     }
     pub fn deserialize(reader: &mut dyn std::io::Read) -> Result<Box<Self>, SSTableError> {
-        // deserialize this
-
         // first we will fetch number of enteris
         let num_enteries = reader.read_u64::<BigEndian>()?;
         // then we will deserialize these enteries one by one
@@ -60,6 +58,9 @@ impl DefaultIndex {
     }
 }
 impl SSTIndex for DefaultIndex {
+    fn get_name(&self) -> &str {
+        "default"
+    }
     /// This function assumes that this entery is > that enteries added previously
     fn add_entry(&mut self, key: &[u8], offset: u64) {
         self.entries.push(DefaultIndexEntry {
