@@ -1,3 +1,5 @@
+use std::{fs::File, io::Write};
+
 use tempfile::TempDir;
 
 use crate::database::{
@@ -79,4 +81,33 @@ pub fn test_default_wal_recovery_on_new() {
     drop(wal);
     let mut wal2 = DefaultWAL::new(root_dir.path().into(), CONFIG.wal.wal_group_sync_size).unwrap();
     test_wal_recovery_on_new(&mut wal2);
+}
+
+#[test]
+pub fn test_default_wal_truncation() {
+    let root_dir = TempDir::new().unwrap();
+    let mut wal = DefaultWAL::new(root_dir.path().into(), CONFIG.wal.wal_group_sync_size).unwrap();
+
+    for i in 0..150 as usize {
+        wal.append_log(&i.to_be_bytes()).unwrap();
+    }
+
+    // simulate crash mid write
+    let mut f = File::options()
+        .append(true)
+        .open(root_dir.path().join("0.wal"))
+        .unwrap();
+    // this value will be trimmed at end
+    f.write_all(b"garbage").unwrap();
+    f.sync_all().unwrap();
+
+    drop(wal);
+
+    let mut wal = DefaultWAL::new(root_dir.path().into(), CONFIG.wal.wal_group_sync_size).unwrap();
+    wal.append_log(&(150 as usize).to_be_bytes()).unwrap();
+    let wal_iter = wal.read(0).unwrap();
+    for i in wal_iter.enumerate() {
+        let item = i.1.unwrap();
+        assert_eq!(&item.1, &i.0.to_be_bytes());
+    }
 }

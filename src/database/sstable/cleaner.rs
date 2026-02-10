@@ -31,7 +31,7 @@ impl Cleaner {
                 {
                     return 0;
                 }
-                sleep(Duration::from_secs(3));
+                sleep(Duration::from_millis(500));
                 let mut version_manger = self.version_manager.write().unwrap();
                 let file_to_be_deleted = version_manger.claim();
                 drop(version_manger);
