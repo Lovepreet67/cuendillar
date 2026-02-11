@@ -1,4 +1,4 @@
-use crate::database::{Entry, OwnedEntry, wal::errors::WALError};
+use crate::database::wal::errors::WALError;
 
 pub mod default_wal;
 pub mod errors;
@@ -9,7 +9,7 @@ pub mod wal_entry;
 pub const MAGIC_NUMBER: u64 = 0x123232;
 pub const MAX_PAYLOAD_LEN: u64 = 10000000;
 
-pub trait WAL {
+pub trait WAL: Send + Sync {
     /// this function will return the offset to which next log will start
     fn append_log(&mut self, payload: &[u8]) -> Result<u64, WALError>;
     fn read(&self, offset: u64) -> Result<Box<dyn WALIterator>, WALError>;

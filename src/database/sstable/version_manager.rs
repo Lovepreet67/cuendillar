@@ -1,15 +1,16 @@
 use std::{
     collections::{HashSet, VecDeque},
     fs::{File, create_dir_all},
-    io::{Seek, Write},
+    io::Write,
     path::PathBuf,
     sync::{Arc, OnceLock},
 };
 
-use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use byteorder::{BigEndian, WriteBytesExt};
 
 use crate::database::{
     config::CONFIG,
+    factory::wal::build_wal_manger,
     memtable::Memtable,
     sstable::{
         errors::SSTableError,
@@ -19,49 +20,37 @@ use crate::database::{
         },
         version::Version,
     },
+    wal::WAL,
 };
 
 pub struct VersionManager {
     root_dir: PathBuf,
     versions: VecDeque<Arc<Version>>,
-    version_file: File,
+    version_wal: Box<dyn WAL>,
 }
 const INDEX_BLOCK_MIN_BYTES: u64 = 400;
 
 impl VersionManager {
     pub fn new(root_dir: PathBuf) -> Result<Self, SSTableError> {
         create_dir_all(&root_dir).unwrap();
-        let mut version_file = File::options()
-            .create(true)
-            .write(true)
-            .read(true)
-            .open(root_dir.join("versions.txt"))
-            // .open("versions.txt")
-            .unwrap();
+        let version_wal = build_wal_manger(&CONFIG.wal, root_dir.join("version"))?;
         let mut versions = VecDeque::new();
 
-        // if the version file is not empty we need to recover
-        let v0 = if version_file.metadata()?.len() > 0 {
-            // here comes the recovery
-            // first we will read the starting offset of the latest version
-            version_file.seek(std::io::SeekFrom::End(-8))?;
-            let latest_version_starting_offset = version_file.read_u64::<BigEndian>()?;
-            // move the file pointer to that version
-            version_file.seek(std::io::SeekFrom::Start(latest_version_starting_offset))?;
-            // now can the version to encode
-            let v0 = Version::decode(&mut version_file, &root_dir)?;
-            // move the file pointer to the end
-            version_file.seek(std::io::SeekFrom::End(0))?;
-            v0
-        } else {
-            Version::new(Vec::default(), 0)
+        // now we will replay the wal // we will start from 0 as we will never be flushing the version wal
+        let version_iterator = version_wal.read(0)?;
+        let latest_version = match version_iterator.last() {
+            Some(Ok((_, encoded_latest_version))) => {
+                Version::decode(&mut encoded_latest_version.as_slice(), &root_dir)?
+            }
+            Some(Err(e)) => panic!("Error happen"),
+            None => Version::new(Vec::default(), 0),
         };
-        versions.push_back(Arc::new(v0));
+        versions.push_back(Arc::new(latest_version));
         Ok(Self {
             root_dir,
             // we will insert version which doesn't contain any sstable
             versions,
-            version_file,
+            version_wal,
         })
     }
     pub fn get_latest_version(&self) -> &Version {
@@ -209,12 +198,9 @@ impl VersionManager {
     }
 
     pub fn push_version(&mut self, v: Version) -> Result<(), SSTableError> {
-        // writeln!(self.version_file, "{:#?}", v).unwrap();
-        // we will fetch teh starting offset of this version encoding so that we can just read the file from end
-        let starting_offset = self.version_file.seek(std::io::SeekFrom::End(0))?;
-        v.encode(&mut self.version_file)?;
-        self.version_file.write_u64::<BigEndian>(starting_offset)?;
-        self.version_file.sync_all()?;
+        let mut payload = Vec::new();
+        v.encode(&mut payload)?;
+        self.version_wal.append_log(&payload)?;
         self.versions.push_back(Arc::new(v));
         Ok(())
     }
