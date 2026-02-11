@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use crate::database::{
-    config::{self, WALConfig, variants::WALVariant},
+    config::{WALConfig, variants::WALVariant},
     wal::{WAL, default_wal::DefaultWAL, errors::WALError},
 };
 

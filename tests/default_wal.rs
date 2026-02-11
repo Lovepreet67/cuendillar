@@ -56,14 +56,14 @@ pub fn execute_op(wal: &mut Box<dyn WAL>, op: Operation) {
     };
 }
 
-pub fn verify_wal(mut wal: Box<dyn WAL>, path: &str) {
+pub fn verify_wal(wal: Box<dyn WAL>, path: &str) {
     let file = File::open(path).unwrap();
     let reader = BufReader::new(file);
     let mut wal_iterator = wal.read(0).unwrap();
     for line in reader.lines() {
         let line = line.unwrap();
         let parts: Vec<&str> = line.split(',').collect();
-        let op = match parts[0] {
+        match parts[0] {
             "GET" => {}
             "PUT" => {
                 let mut payload = Vec::new();

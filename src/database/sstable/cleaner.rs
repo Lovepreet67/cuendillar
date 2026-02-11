@@ -37,8 +37,12 @@ impl Cleaner {
                 drop(version_manger);
                 // now we will delete files onw by one
                 for file in file_to_be_deleted {
-                    fs::remove_file(file)
-                        .map_err(|e| eprintln!("Error while deleting the file {:?}", e));
+                    match fs::remove_file(file) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            eprintln!("Error while deleting the file {:?}", e)
+                        }
+                    }
                 }
             }
         })

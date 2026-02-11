@@ -75,7 +75,7 @@ impl Memtable for VectorMemtable {
         self.wal_offset = wal_offset;
         self.store.push(e.into());
     }
-    fn find(&self, key: &[u8]) -> Result<Option<Entry>, MemtableError> {
+    fn find(&self, key: &[u8]) -> Result<Option<Entry<'_>>, MemtableError> {
         for element in self.store.iter().rev() {
             if element.get_key() == key {
                 return Ok(Some(element.into()));
@@ -103,11 +103,11 @@ impl Memtable for VectorMemtable {
         self.store.len() as u64
     }
     fn size(&self) -> u64 {
-        let mut totalSize = 0;
+        let mut total_size = 0;
         for i in &self.store {
-            totalSize += i.size();
+            total_size += i.size();
         }
-        totalSize as u64
+        total_size as u64
     }
     fn get_wal_offset(&self) -> u64 {
         self.wal_offset

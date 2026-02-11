@@ -42,7 +42,7 @@ impl VersionManager {
             Some(Ok((_, encoded_latest_version))) => {
                 Version::decode(&mut encoded_latest_version.as_slice(), &root_dir)?
             }
-            Some(Err(e)) => panic!("Error happen"),
+            Some(Err(e)) => panic!("Error happen {:?}", e),
             None => Version::new(Vec::default(), 0),
         };
         versions.push_back(Arc::new(latest_version));
@@ -79,7 +79,7 @@ impl VersionManager {
         }
         let mut sstable_included_in_drop = HashSet::new();
         let mut files_to_delete: Vec<PathBuf> = vec![];
-        for i in 0..index {
+        for _i in 0..index {
             // SAFETY: As we know this is the sole owner of arc
             let mut version = Arc::try_unwrap(self.versions.pop_front().unwrap()).unwrap();
             let mut level = 0;

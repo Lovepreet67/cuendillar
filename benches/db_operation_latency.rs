@@ -11,7 +11,6 @@ use std::{
     fs::{File, create_dir_all, write},
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
-    str::FromStr,
     thread::sleep,
     time::{Duration, Instant},
 };

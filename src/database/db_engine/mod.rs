@@ -113,7 +113,12 @@ impl Engine {
                 }
                 sleep(Duration::from_millis(CONFIG.compaction.compaction_interval));
                 if compaction.need_compaction() {
-                    compaction.run_compaction();
+                    match compaction.run_compaction() {
+                        Ok(_) => {}
+                        Err(e) => {
+                            eprintln!("Error happen during the compaction {:?}", e)
+                        }
+                    }
                 }
             }
         }));

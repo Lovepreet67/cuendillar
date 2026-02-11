@@ -59,7 +59,7 @@ impl MemtableManager for DefaultManger {
         self.immutable_memtables.push_front(current_active_memtable);
         Ok(())
     }
-    fn iter(&self) -> Box<dyn std::iter::Iterator<Item = crate::database::Entry> + '_> {
+    fn iter(&self) -> Box<dyn std::iter::Iterator<Item = crate::database::Entry<'_>> + '_> {
         Box::new(self.active_memtable.iter())
     }
     fn require_rotation(&self) -> bool {

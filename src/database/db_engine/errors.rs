@@ -54,8 +54,8 @@ impl From<SSTableError> for EngineError {
     fn from(value: SSTableError) -> Self {
         match value {
             SSTableError::IoError(e) => return EngineError::IoError(e),
-            SSTableError::UuidError(e) => {
-                return EngineError::Internal("Got UUid errir in SSTable".into());
+            SSTableError::UuidError(_e) => {
+                return EngineError::Internal("Got UUid erroer in SSTable".into());
             }
             SSTableError::PoisonedError => {
                 return EngineError::Internal("trying to access poisened SStable".into());
