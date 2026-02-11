@@ -1,3 +1,1 @@
-pub enum DatabaseError {
-    Generic,
-}
+

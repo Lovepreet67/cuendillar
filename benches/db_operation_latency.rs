@@ -8,7 +8,7 @@ use plotters::{
 use tempfile::TempDir;
 
 use std::{
-    fs::{File, create_dir_all, write},
+    fs::{File, create_dir_all, remove_dir_all, write},
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
     str::FromStr,
@@ -226,12 +226,13 @@ pub fn execute_op(engine: &mut Engine, op: Operation) {
 
 pub fn run(workload: &str, file: &str) {
     let out_dir = output_dir(workload);
-    let dir = TempDir::new().unwrap();
-    let mut engine = Engine::new(Some(dir.path().into())).unwrap();
+    let mut engine = Engine::new(Some(PathBuf::from_str("./table").unwrap())).unwrap();
 
     sleep(Duration::from_secs(10)); // warm-up
     let stats = run_workload(&mut engine, file);
     stats.report(&out_dir);
+    drop(engine);
+    remove_dir_all("./table").unwrap();
 }
 
 fn main() {

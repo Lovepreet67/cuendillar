@@ -1,11 +1,19 @@
 use std::str::Utf8Error;
 
+use crate::database::wal::errors::WALError;
+
 #[derive(Debug)]
 pub enum SSTableError {
     IoError(std::io::Error),
     UuidError(uuid::Error),
     General(String),
     PoisonedError,
+}
+
+impl From<WALError> for SSTableError {
+    fn from(value: WALError) -> Self {
+        return SSTableError::General(format!("{:?}", value));
+    }
 }
 
 impl From<std::io::Error> for SSTableError {

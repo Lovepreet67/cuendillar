@@ -93,7 +93,7 @@ impl SSTableKeyRange {
         reader.read_exact(&mut first_key)?;
         let last_key_size = reader.read_u64::<BigEndian>()?;
         let mut last_key = vec![0; last_key_size as usize];
-        reader.read_exact(&mut last_key);
+        reader.read_exact(&mut last_key)?;
         Ok(Self {
             first_key,
             last_key,

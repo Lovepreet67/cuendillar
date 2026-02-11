@@ -164,7 +164,7 @@ impl Version {
             // number of tables in this version
             let i_level_len = reader.read_u64::<BigEndian>()?;
             let mut level = Vec::with_capacity(i_level_len as usize);
-            for table_index in 0..i_level_len {
+            for _table_index in 0..i_level_len {
                 // as uuid is 16 bytes long
                 reader.read_exact(&mut id_bytes)?;
                 let table_id = uuid::Uuid::from_bytes(id_bytes);

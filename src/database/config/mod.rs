@@ -9,7 +9,7 @@ use serde::Deserialize;
 
 use crate::database::config::variants::{
     BloomVariant, CompactionVariant, IndexVariant, MemtableMangerVariant, MemtableVariant,
-    SSTableVariant, WALVariant,
+    WALVariant,
 };
 
 pub mod variants;
@@ -27,10 +27,6 @@ pub struct MemtableConfig {
     pub variant: MemtableVariant,
     pub manager_variant: MemtableMangerVariant,
     pub max_memtable_size: u64,
-}
-#[derive(Debug, Deserialize)]
-pub struct SSTableConfig {
-    pub variant: SSTableVariant,
 }
 #[derive(Debug, Deserialize)]
 pub struct IndexConfig {
@@ -59,7 +55,6 @@ pub struct DbConfig {
     pub index_block_min_size: u64,
     pub wal: WALConfig,
     pub memtable: MemtableConfig,
-    pub sstable: SSTableConfig,
     pub bloom: BloomConfig,
     pub index: IndexConfig,
     pub compaction: CompactionConfig,

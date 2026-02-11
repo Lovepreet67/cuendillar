@@ -43,7 +43,7 @@ impl DefaultWAL {
             last_rotation_offset: 0,
             crc_computer: Crc::<u32>::new(&crc::CRC_32_CKSUM),
         };
-        let mut files = wal.get_all_files()?;
+        let files = wal.get_all_files()?;
         let (current_offset, active_log_file) = if files.len() == 0 {
             let new_file_path = wal.wal_dir.join("0.wal");
             let new_file = File::options()
@@ -52,15 +52,74 @@ impl DefaultWAL {
                 .open(new_file_path)?;
             (0, new_file)
         } else {
-            let (file_offset, file_path) = files.pop().unwrap(); // as we know file.len()>0
-            let mut active_file = File::options().append(true).open(&file_path)?;
-            let curr_file_offset = active_file.seek(std::io::SeekFrom::End(0))?; // as cursor will be at the end of file (append mode)
-            wal.last_rotation_offset = curr_file_offset; // Marking last rotation offset we will not rotate here because there will be read operation first
-            (file_offset + curr_file_offset, active_file)
+            // here we will replay the logs
+            let active_file = File::options().read(true).open(&files[0].1)?;
+            // curr offset is the first offset from which next log will start
+            let mut curr_offset = files[0].0;
+            let wal_iterator = DefaultWALIterator::new(
+                files.iter().skip(1).map(|item| item.1.clone()).collect(),
+                Some(BufReader::new(active_file)),
+                wal.crc_computer.clone(),
+            );
+            // now we will replay the wal
+            for log in wal_iterator {
+                match log {
+                    Ok(v) => curr_offset = v.0 + Self::get_entry_size(v.1.len() as u64),
+                    Err(e) => {
+                        eprintln!(
+                            "Trimming the wal at {} because of error {:?}",
+                            curr_offset, e
+                        );
+                        break;
+                    }
+                }
+            }
+
+            // now we have current offset we will find the file which contain this offset
+            let file_index = match files.binary_search_by(|item| {
+                if item.0 < curr_offset {
+                    std::cmp::Ordering::Less
+                } else if item.0 == curr_offset {
+                    std::cmp::Ordering::Equal
+                } else {
+                    std::cmp::Ordering::Greater
+                }
+            }) {
+                Ok(target_file_index) => target_file_index,
+                Err(next_file_index) => {
+                    // next_file_index will always be greater than 0 as we started iterator from first file
+                    next_file_index - 1
+                }
+            };
+
+            if file_index != files.len() - 1 {
+                eprintln!(
+                    "Can't start DB, corruption found other than last file in WAL file {:?}",
+                    files[file_index].1
+                );
+                return Err(WALError::CorruptedEntry(curr_offset));
+            }
+
+            // wal.offset is the starting offset of the last valid log
+
+            let active_file = File::options().write(true).open(&files[file_index].1)?;
+            assert!(curr_offset >= files[file_index].0);
+            let index_inside_file = curr_offset - files[file_index].0;
+            active_file.set_len(index_inside_file)?;
+            active_file.sync_all()?;
+            drop(active_file);
+            let active_file = File::options().append(true).open(&files[file_index].1)?;
+            wal.last_rotation_offset = curr_offset; // Marking last rotation offset we will not rotate here because there will be read operation first
+            (curr_offset, active_file)
         };
         wal.active_log = Some(active_log_file);
         wal.curr_offset = current_offset;
         Ok(wal)
+    }
+    pub fn get_entry_size(payload_len: u64) -> u64 {
+        // lsn(u64)+crc(u32)+payload_len(u64)+payload_+magic_number(u64)+padding
+        let data_len = 8 + 4 + 8 + payload_len + 8;
+        data_len + eight_align_addition(data_len)
     }
     pub fn rotate(&mut self) -> Result<(), WALError> {
         let new_log_file_id = format!("{}.wal", self.curr_offset);
@@ -229,7 +288,7 @@ impl DefaultWALIterator {
                     std::io::ErrorKind::UnexpectedEof => {
                         // in this case we will
                         self.index += 1;
-                        if self.index == self.files.len() {
+                        if self.index >= self.files.len() {
                             // as there is not files
                             self.active_file = None;
                             return Ok(None);
