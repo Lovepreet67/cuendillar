@@ -3,7 +3,7 @@ use std::io::Read;
 use byteorder::{BigEndian, ReadBytesExt};
 
 use crate::database::{
-    config::{BloomConfig, variants::BloomVariant},
+    config::bloom_config::{BloomConfig, BloomVariant},
     sstable::{
         errors::SSTableError,
         metadata::bloom_filter::{BloomFilter, default_bloom_filter::DefaultBloomFilter},
@@ -15,10 +15,7 @@ pub struct BloomFactory;
 impl BloomFactory {
     pub fn build_bloom_filter(bloom_config: &BloomConfig) -> Box<dyn BloomFilter> {
         match bloom_config.variant {
-            BloomVariant::Default => Box::new(DefaultBloomFilter::new(
-                bloom_config.size,
-                bloom_config.key_size,
-            )),
+            BloomVariant::Default => Box::new(DefaultBloomFilter::new(bloom_config)),
         }
     }
     pub fn deserialize_bloom_filter(

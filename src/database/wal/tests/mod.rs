@@ -1,9 +1,6 @@
 use std::{fs::File, path::Path};
 
-use crate::database::{
-    config::CONFIG,
-    wal::{WAL, errors::WALError},
-};
+use crate::database::wal::{WAL, errors::WALError};
 mod default_wal;
 
 pub fn test_wal_append(wal: &mut impl WAL) {
@@ -30,9 +27,9 @@ pub fn test_wal_read(wal: &mut impl WAL) {
     assert_eq!(curr, 100);
 }
 
-pub fn test_wal_rotation(wal: &mut impl WAL) {
+pub fn test_wal_rotation(wal: &mut impl WAL, wal_file_size: u64) {
     let wal_record_size = 40;
-    let iterations = ((CONFIG.wal.wal_file_size * 5) / wal_record_size) - 1; // there will be multiple files
+    let iterations = ((wal_file_size * 5) / wal_record_size) - 1; // there will be multiple files
     for i in 0..iterations {
         wal.append_log(&i.to_be_bytes()).unwrap();
     }
@@ -47,9 +44,9 @@ pub fn test_wal_rotation(wal: &mut impl WAL) {
     assert_eq!(curr, iterations);
 }
 
-pub fn test_wal_flush(wal: &mut impl WAL) {
+pub fn test_wal_flush(wal: &mut impl WAL, wal_file_size: u64) {
     let wal_record_size = 40;
-    let iterations = ((CONFIG.wal.wal_file_size * 4) / wal_record_size) - 1; // there will be multiple files
+    let iterations = ((wal_file_size * 4) / wal_record_size) - 1; // there will be multiple files
     // we will flush almost half the logs
     let mut wals_to_flush = 0;
     for i in 0..iterations {
@@ -73,9 +70,9 @@ pub fn test_wal_flush(wal: &mut impl WAL) {
     }
 }
 
-pub fn test_wal_corruption(wal: &mut impl WAL) {
+pub fn test_wal_corruption(wal: &mut impl WAL, wal_file_size: u64) {
     let wal_record_size = 40;
-    let iterations = ((CONFIG.wal.wal_file_size * 3) / wal_record_size) - 1; // there will be multiple files
+    let iterations = ((wal_file_size * 3) / wal_record_size) - 1; // there will be multiple files
     // we will flush almost half the logs
     let mut wals_to_flush = 0;
     for i in 0..iterations {
@@ -95,8 +92,8 @@ pub fn test_wal_invalid_file_name(wal: &mut impl WAL, root_dir: &Path) {
     assert!(matches!(wal.read(0), Err(WALError::InvalidFileName(_))));
 }
 
-pub fn test_wal_max_palyload(wal: &mut impl WAL) {
-    let payload = vec![0u8; (CONFIG.wal.wal_max_payload_len + 3) as usize];
+pub fn test_wal_max_palyload(wal: &mut impl WAL, wal_max_payload_len: u64) {
+    let payload = vec![0u8; (wal_max_payload_len + 3) as usize];
     assert!(matches!(
         wal.append_log(&payload),
         Err(WALError::PayloadLengthOutOfBound(_))

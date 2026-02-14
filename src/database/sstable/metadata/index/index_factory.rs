@@ -3,7 +3,7 @@ use std::io::Read;
 use byteorder::{BigEndian, ReadBytesExt};
 
 use crate::database::{
-    config::{IndexConfig, variants::IndexVariant},
+    config::index_config::{IndexConfig, IndexVariant},
     sstable::{
         errors::SSTableError,
         metadata::index::{SSTIndex, default_index::DefaultIndex},

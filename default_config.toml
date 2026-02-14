@@ -1,11 +1,11 @@
 root_dir = "./table"
-index_block_min_size = 1000
 
 [wal]
 variant = "default"
+wal_dir = "./table/wal"
 wal_group_sync_size = 100
-wal_file_size = 100_00_00_0
-wal_max_payload_len = 1000_000 # 1 MB
+wal_file_size_in_bytes = 200_00_00_0
+wal_max_payload_len_in_bytes = 1000_000 # 1 MB
 
 [memtable]
 variant = "vector"
@@ -17,14 +17,16 @@ variant = "default"
 
 [bloom]
 variant = "default"
-key_size = 100
+bits_per_key = 100
 size = 1000
 
 [index]
 variant = "default"
+index_block_min_size = 1000
 
 
 [compaction]
+root_dir = "./table"
 compaction_interval = 100
 min_l0_file_count = 3
 variant = "leveled"
@@ -33,3 +35,6 @@ level_entries_growth_factor = 4
 level_size_growth_factor = 4
 level_base_size = 10000
 max_level_count = 5
+
+[cleaning]
+cleaning_interval = 100

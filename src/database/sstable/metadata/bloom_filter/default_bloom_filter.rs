@@ -3,19 +3,23 @@ use std::io::Read;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use murmur3::murmur3_32;
 
-use crate::database::sstable::{errors::SSTableError, metadata::bloom_filter::BloomFilter};
+use crate::database::{
+    config::bloom_config::{BloomConfig, BloomVariant},
+    sstable::{errors::SSTableError, metadata::bloom_filter::BloomFilter},
+};
 
 #[derive(Clone, Debug)]
 pub struct DefaultBloomFilter {
-    bits_per_key: u32,
+    config: BloomConfig,
     bloom: Vec<u64>,
 }
 
 impl DefaultBloomFilter {
-    pub fn new(size: u32, bits_per_key: u32) -> Self {
+    pub fn new(config: &BloomConfig) -> Self {
+        assert_eq!(config.variant, BloomVariant::Default);
         Self {
-            bits_per_key,
-            bloom: vec![0; ((size + 63) / 64) as usize],
+            config: config.clone(),
+            bloom: vec![0; ((config.size + 63) / 64) as usize],
         }
     }
     fn bloom_size(&self) -> u32 {
@@ -29,7 +33,11 @@ impl DefaultBloomFilter {
             bloom[i] = reader.read_u64::<BigEndian>()?;
         }
         Ok(Box::new(Self {
-            bits_per_key,
+            config: BloomConfig {
+                variant: crate::database::config::bloom_config::BloomVariant::Default,
+                size: bloom_size,
+                bits_per_key: bits_per_key as usize,
+            },
             bloom,
         }))
     }
@@ -43,7 +51,7 @@ impl BloomFilter for DefaultBloomFilter {
         let mut x = key;
         let h1 = murmur3_32(&mut x, 0).unwrap();
         let delta = (h1 >> 17) | (h1 << 15);
-        for i in 0..self.bits_per_key {
+        for i in 0..self.config.bits_per_key as u32 {
             let hi = h1.wrapping_add(i.wrapping_mul(delta)) % self.bloom_size();
 
             // now we will set a bit in the vector
@@ -56,7 +64,7 @@ impl BloomFilter for DefaultBloomFilter {
         let mut x = key;
         let h1 = murmur3_32(&mut x, 0).unwrap();
         let delta = (h1 >> 17) | (h1 << 15);
-        for i in 0..self.bits_per_key {
+        for i in 0..self.config.bits_per_key as u32 {
             let hi = h1.wrapping_add(i.wrapping_mul(delta)) % self.bloom_size();
             // now we will set a bit in the vector
             let index = (hi / 64) as usize;
@@ -70,7 +78,7 @@ impl BloomFilter for DefaultBloomFilter {
     fn serialize(&self, buf: &mut dyn std::io::Write) -> Result<u64, SSTableError> {
         // serialization of bloom filter
         let mut bytes_written = 0;
-        buf.write_u32::<BigEndian>(self.bits_per_key)?;
+        buf.write_u32::<BigEndian>(self.config.bits_per_key as u32)?;
         bytes_written += 4;
         buf.write_u32::<BigEndian>(self.bloom_size())?;
         bytes_written += 4;

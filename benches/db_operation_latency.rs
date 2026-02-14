@@ -1,4 +1,4 @@
-use cuendillar::database::db_engine::Engine;
+use cuendillar::database::{config::DbConfig, db_engine::Engine};
 use hdrhistogram::Histogram;
 use plotters::{
     chart::ChartBuilder,
@@ -226,7 +226,8 @@ pub fn execute_op(engine: &mut Engine, op: Operation) {
 
 pub fn run(workload: &str, file: &str) {
     let out_dir = output_dir(workload);
-    let mut engine = Engine::new(Some(PathBuf::from_str("./table").unwrap())).unwrap();
+    let config = DbConfig::get_config().unwrap();
+    let mut engine = Engine::new(config).unwrap();
 
     sleep(Duration::from_secs(10)); // warm-up
     let stats = run_workload(&mut engine, file);

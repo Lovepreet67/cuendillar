@@ -9,7 +9,7 @@ use std::{
 use byteorder::{BigEndian, WriteBytesExt};
 
 use crate::database::{
-    config::CONFIG,
+    config::DbConfig,
     factory::wal::build_wal_manger,
     memtable::Memtable,
     sstable::{
@@ -27,30 +27,35 @@ pub struct VersionManager {
     root_dir: PathBuf,
     versions: VecDeque<Arc<Version>>,
     version_wal: Box<dyn WAL>,
+    config: Arc<DbConfig>,
 }
 const INDEX_BLOCK_MIN_BYTES: u64 = 400;
 
 impl VersionManager {
-    pub fn new(root_dir: PathBuf) -> Result<Self, SSTableError> {
-        create_dir_all(&root_dir).unwrap();
-        let version_wal = build_wal_manger(&CONFIG.wal, root_dir.join("version"))?;
+    pub fn new(config: Arc<DbConfig>) -> Result<Self, SSTableError> {
+        let sstable_root_dir = config.root_dir.join("sstable");
+        let mut wal_config = config.wal.clone();
+        wal_config.wal_dir = sstable_root_dir.join("version");
+        create_dir_all(&sstable_root_dir).unwrap();
+        let version_wal = build_wal_manger(&wal_config)?;
         let mut versions = VecDeque::new();
 
         // now we will replay the wal // we will start from 0 as we will never be flushing the version wal
         let version_iterator = version_wal.read(0)?;
         let latest_version = match version_iterator.last() {
             Some(Ok((_, encoded_latest_version))) => {
-                Version::decode(&mut encoded_latest_version.as_slice(), &root_dir)?
+                Version::decode(&mut encoded_latest_version.as_slice(), &config.root_dir)?
             }
             Some(Err(e)) => panic!("Error happen {:?}", e),
             None => Version::new(Vec::default(), 0),
         };
         versions.push_back(Arc::new(latest_version));
         Ok(Self {
-            root_dir,
+            root_dir: sstable_root_dir,
             // we will insert version which doesn't contain any sstable
             versions,
             version_wal,
+            config,
         })
     }
     pub fn get_latest_version(&self) -> &Version {
@@ -111,8 +116,8 @@ impl VersionManager {
             .append(true)
             .create_new(true)
             .open(&new_table_path)?;
-        let mut bloom = BloomFactory::build_bloom_filter(&CONFIG.bloom);
-        let mut index = IndexFactory::build_index(&CONFIG.index);
+        let mut bloom = BloomFactory::build_bloom_filter(&self.config.bloom);
+        let mut index = IndexFactory::build_index(&self.config.index);
         let mut bytes_encoded = 0;
         let mut byte_encoded_since_last_index = INDEX_BLOCK_MIN_BYTES;
         let mt_iter = mt.iter();
