@@ -4,10 +4,9 @@ use std::{
 };
 
 use cuendillar::database::{
-    config::{DbConfig, wal_config},
+    config::DbConfig,
     wal::{WAL, default_wal::DefaultWAL},
 };
-use tempfile::TempDir;
 
 pub enum Operation {
     Get(Vec<u8>, bool, Vec<u8>),

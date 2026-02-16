@@ -61,12 +61,10 @@ impl Engine {
     }
     pub fn new(config: Arc<DbConfig>) -> Result<Self, EngineError> {
         let uid = uuid::Uuid::new_v4();
-        let root_dir = config.root_dir.clone();
         let memetable_manager = build_memtable_manager(&config.memtable, Some(uid))?;
         // wal manager will handle its own recovery
         let wal_manager = build_wal_manger(&config.wal)?;
         // wal_manager.rotate(Some(uid))?;
-        let sstable_root_dir = root_dir.join("sstable");
         // version manager will handle its own recovery
         let version_manager = Arc::new(RwLock::new(VersionManager::new(config.clone())?));
         // here will come the recovery process
@@ -105,14 +103,13 @@ impl Engine {
             version_manager.clone(),
         );
         let under_shutdown = engine.under_shutdown.clone();
+        let compaction_interval = config.compaction.compaction_interval;
         engine.workers.push(thread::spawn(move || {
             loop {
                 if under_shutdown.load(std::sync::atomic::Ordering::Relaxed) {
                     return 0;
                 }
-                sleep(Duration::from_millis(
-                    config.compaction.compaction_interval as u64,
-                ));
+                sleep(Duration::from_millis(compaction_interval as u64));
                 if compaction.need_compaction() {
                     match compaction.run_compaction() {
                         Ok(_) => {}
@@ -125,7 +122,9 @@ impl Engine {
         }));
         let under_shutdown = engine.under_shutdown.clone();
 
-        let cleaner = Cleaner::new(version_manager.clone(), under_shutdown);
+        let clearner_config = config.cleaning.clone();
+
+        let cleaner = Cleaner::new(clearner_config, version_manager.clone(), under_shutdown);
         engine.workers.push(cleaner.init());
         Ok(engine)
     }

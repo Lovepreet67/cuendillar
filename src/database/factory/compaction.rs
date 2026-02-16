@@ -1,7 +1,4 @@
-use std::{
-    path::PathBuf,
-    sync::{Arc, RwLock},
-};
+use std::sync::{Arc, RwLock};
 
 use crate::database::{
     config::{

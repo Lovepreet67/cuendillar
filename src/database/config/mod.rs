@@ -1,10 +1,13 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use figment::{
     Figment,
-    providers::{Format, Toml},
+    providers::{Format, Serialized, Toml},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use tempfile::TempDir;
 
@@ -14,7 +17,6 @@ use crate::database::config::{
     wal_config::WALConfig,
 };
 
-#[cfg(test)]
 use crate::database::config::{
     bloom_config::BloomVariant,
     compaction_config::CompactionVariant,
@@ -31,9 +33,10 @@ pub mod index_config;
 pub mod memtable_config;
 pub mod wal_config;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct DbConfig {
     pub root_dir: PathBuf,
+    pub sstable_root_dir: PathBuf,
     pub wal: WALConfig,
     pub memtable: MemtableConfig,
     pub bloom: BloomConfig,
@@ -43,34 +46,12 @@ pub struct DbConfig {
 }
 
 impl DbConfig {
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        self.bloom.validate()?;
-        self.cleaning.validate()?;
-        self.compaction.validate()?;
-        self.index.validate()?;
-        self.memtable.validate()?;
-        self.wal.validate()?;
-        Ok(())
-    }
-    pub fn get_config() -> Result<Arc<DbConfig>, ConfigError> {
-        let config_file_path =
-            std::env::var("CONFIG_PATH").unwrap_or_else(|_| "./default_config.toml".to_owned());
-        println!("Reading config from {:?}", config_file_path);
-        let config: DbConfig = Figment::new()
-            .merge(Toml::file(config_file_path))
-            .extract()
-            .expect("Failed to load DB config from path");
-        config.validate()?;
-        Ok(Arc::new(config))
-    }
-
-    #[cfg(test)]
-    pub fn get_test_config() -> (Arc<DbConfig>, TempDir) {
-        let root_dir = TempDir::new().unwrap();
-        let cfg = DbConfig {
-            root_dir: root_dir.path().to_path_buf(),
+    pub fn get_dynamic_defaults(root_dir: &Path, sstable_root_dir: &Path) -> Self {
+        Self {
+            root_dir: root_dir.into(),
+            sstable_root_dir: sstable_root_dir.into(),
             wal: WALConfig {
-                wal_dir: root_dir.path().join("wal").into(),
+                wal_dir: root_dir.join("wal"),
                 variant: WALVariant::Default,
                 wal_group_sync_size: 1,
                 wal_file_size_in_bytes: 4 * 1024, // tiny for fast rotation
@@ -91,7 +72,7 @@ impl DbConfig {
                 index_block_min_size: 1000,
             },
             compaction: CompactionConfig {
-                root_dir: root_dir.path().into(),
+                root_dir: sstable_root_dir.into(),
                 compaction_interval: 100,
                 min_l0_file_count: 3,
                 variant: CompactionVariant::Leveled,
@@ -102,9 +83,56 @@ impl DbConfig {
                 max_level_count: 5,
             },
             cleaning: CleanerConfig {
+                root_dir: sstable_root_dir.into(),
                 cleaning_interval: 1,
             },
-        };
+        }
+    }
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        self.bloom.validate()?;
+        self.cleaning.validate()?;
+        self.compaction.validate()?;
+        self.index.validate()?;
+        self.memtable.validate()?;
+        self.wal.validate()?;
+        // all compacter, version_manager, cleaner should be on the same dir
+        if self.compaction.root_dir != self.cleaning.root_dir {
+            return Err(ConfigError::ExtractionError(
+                "Compaction and cleaning are running on the different directories it should run on same".into(),
+            ));
+        }
+        Ok(())
+    }
+    pub fn get_config() -> Result<Arc<DbConfig>, ConfigError> {
+        let config_file_path =
+            std::env::var("CONFIG_PATH").unwrap_or_else(|_| "./default_config.toml".to_owned());
+        println!("Reading config from {:?}", config_file_path);
+        // first we will generate the root_dir to get the default configs for some parts
+        let partial_figment = Figment::new().merge(Toml::file(&config_file_path));
+        // now we will get the root_dir and generate the default configs from it
+        let root_dir: PathBuf = partial_figment
+            .extract_inner("root_dir")
+            .expect("root_dir is required");
+        let sstable_root_dir: PathBuf = partial_figment
+            .extract_inner("sstable_root_dir")
+            .unwrap_or_else(|_| root_dir.join("sstable"));
+        let dynamic_defaults = DbConfig::get_dynamic_defaults(&root_dir, &sstable_root_dir);
+        // getting default configs
+        let config: DbConfig = Figment::new()
+            .merge(Serialized::defaults(dynamic_defaults))
+            .merge(Toml::file(config_file_path))
+            .extract()
+            .expect("Failed to load DB config from path");
+        // TODO: all the paths should be canonicalized
+        config.validate()?;
+        Ok(Arc::new(config))
+    }
+
+    #[cfg(test)]
+    pub fn get_test_config() -> (Arc<DbConfig>, TempDir) {
+        let root_dir = TempDir::new().unwrap();
+        let sstable_root_dir = root_dir.path().join("sstable");
+        let cfg = Self::get_dynamic_defaults(root_dir.path(), &sstable_root_dir);
         (Arc::new(cfg), root_dir)
     }
 }

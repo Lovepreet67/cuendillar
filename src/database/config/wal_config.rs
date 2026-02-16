@@ -1,18 +1,18 @@
 use std::path::PathBuf;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use tempfile::TempDir;
 
 use crate::database::config::config_error::ConfigError;
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum WALVariant {
     Default,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct WALConfig {
     pub wal_dir: PathBuf,
     pub variant: WALVariant,
@@ -50,7 +50,7 @@ impl WALConfig {
         let root_dir = TempDir::new().unwrap();
         (
             WALConfig {
-                wal_dir: root_dir.path().join("wal").into(),
+                wal_dir: root_dir.path().into(),
                 variant: WALVariant::Default,
                 wal_group_sync_size: 1,
                 wal_file_size_in_bytes: 4 * 1024, // tiny for fast rotation

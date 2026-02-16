@@ -1,20 +1,20 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::database::config::config_error::ConfigError;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MemtableVariant {
     Vector,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MemtableMangerVariant {
     Default,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct MemtableConfig {
     pub variant: MemtableVariant,
     pub manager_variant: MemtableMangerVariant,

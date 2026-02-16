@@ -1,4 +1,5 @@
 root_dir = "./table"
+sstable_root_dir = "./table/sstable"
 
 [wal]
 variant = "default"
@@ -26,7 +27,7 @@ index_block_min_size = 1000
 
 
 [compaction]
-root_dir = "./table"
+root_dir = "./table/sstable"
 compaction_interval = 100
 min_l0_file_count = 3
 variant = "leveled"
@@ -37,4 +38,5 @@ level_base_size = 10000
 max_level_count = 5
 
 [cleaning]
+root_dir = "./table/sstable"
 cleaning_interval = 100

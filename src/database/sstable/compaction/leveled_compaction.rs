@@ -13,9 +13,7 @@ use byteorder::{BigEndian, WriteBytesExt};
 use crate::database::{
     Entry, OwnedEntry,
     config::{
-        bloom_config::{self, BloomConfig},
-        compaction_config::CompactionConfig,
-        index_config::{self, IndexConfig},
+        bloom_config::BloomConfig, compaction_config::CompactionConfig, index_config::IndexConfig,
     },
     sstable::{
         compaction::Compaction,

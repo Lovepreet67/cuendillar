@@ -1,14 +1,14 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::database::config::config_error::ConfigError;
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum IndexVariant {
     Default,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct IndexConfig {
     pub variant: IndexVariant,
     pub index_block_min_size: usize,

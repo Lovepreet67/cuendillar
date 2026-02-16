@@ -33,8 +33,9 @@ const INDEX_BLOCK_MIN_BYTES: u64 = 400;
 
 impl VersionManager {
     pub fn new(config: Arc<DbConfig>) -> Result<Self, SSTableError> {
-        let sstable_root_dir = config.root_dir.join("sstable");
+        let sstable_root_dir = config.sstable_root_dir.clone();
         let mut wal_config = config.wal.clone();
+        wal_config.wal_group_sync_size = 0;
         wal_config.wal_dir = sstable_root_dir.join("version");
         create_dir_all(&sstable_root_dir).unwrap();
         let version_wal = build_wal_manger(&wal_config)?;
@@ -44,7 +45,7 @@ impl VersionManager {
         let version_iterator = version_wal.read(0)?;
         let latest_version = match version_iterator.last() {
             Some(Ok((_, encoded_latest_version))) => {
-                Version::decode(&mut encoded_latest_version.as_slice(), &config.root_dir)?
+                Version::decode(&mut encoded_latest_version.as_slice(), &sstable_root_dir)?
             }
             Some(Err(e)) => panic!("Error happen {:?}", e),
             None => Version::new(Vec::default(), 0),

@@ -206,10 +206,6 @@ impl Version {
 #[cfg(test)]
 mod test {
 
-    use std::path::PathBuf;
-
-    use tempfile::TempDir;
-
     use crate::database::{
         Entry,
         config::DbConfig,

@@ -5,13 +5,11 @@ use plotters::{
     prelude::{IntoDrawingArea, Rectangle, SVGBackend},
     style::{BLUE, Color, WHITE},
 };
-use tempfile::TempDir;
 
 use std::{
     fs::{File, create_dir_all, remove_dir_all, write},
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
-    str::FromStr,
     thread::sleep,
     time::{Duration, Instant},
 };

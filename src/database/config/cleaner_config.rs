@@ -1,9 +1,12 @@
-use serde::Deserialize;
+use std::path::PathBuf;
+
+use serde::{Deserialize, Serialize};
 
 use crate::database::config::config_error::ConfigError;
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CleanerConfig {
+    pub root_dir: PathBuf,
     pub cleaning_interval: usize,
 }
 

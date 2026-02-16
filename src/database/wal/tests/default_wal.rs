@@ -86,7 +86,8 @@ pub fn test_default_wal_truncation() {
     let (config, root_dir) = &WALConfig::get_default_wal_test_config();
     let mut wal = DefaultWAL::new(config).unwrap();
 
-    for i in 0..150 as usize {
+    // We need to keep this small in order to make sure that 0.wal is still active
+    for i in 0..10 as usize {
         wal.append_log(&i.to_be_bytes()).unwrap();
     }
 
@@ -100,9 +101,8 @@ pub fn test_default_wal_truncation() {
     f.sync_all().unwrap();
 
     drop(wal);
-
     let mut wal = DefaultWAL::new(config).unwrap();
-    wal.append_log(&(150 as usize).to_be_bytes()).unwrap();
+    wal.append_log(&(10 as usize).to_be_bytes()).unwrap();
     let wal_iter = wal.read(0).unwrap();
     for i in wal_iter.enumerate() {
         let item = i.1.unwrap();
