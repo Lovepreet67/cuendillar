@@ -46,6 +46,9 @@ impl From<WALError> for EngineError {
             WALError::OffsetUnderflow => {
                 return EngineError::Internal(format!("Offset requested is flushed"));
             }
+            WALError::OffsetOverflow => {
+                return EngineError::Internal(format!("Offset requested is yet commited"));
+            }
         };
     }
 }

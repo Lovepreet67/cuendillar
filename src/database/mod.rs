@@ -5,7 +5,7 @@ use std::{
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
-mod config;
+pub mod config;
 pub mod db_engine;
 mod errors;
 pub mod factory;

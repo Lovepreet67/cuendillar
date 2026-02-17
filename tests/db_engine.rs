@@ -1,13 +1,11 @@
 use std::{
     fs::{File, remove_dir_all},
     io::{BufRead, BufReader, Write},
-    path::PathBuf,
-    str::FromStr,
     thread::sleep,
     time::Duration,
 };
 
-use cuendillar::database::{OwnedEntry, db_engine::Engine};
+use cuendillar::database::{OwnedEntry, config::DbConfig, db_engine::Engine};
 
 pub enum Operation {
     Get(Vec<u8>, bool, Vec<u8>),
@@ -68,14 +66,15 @@ pub fn execute_op(engine: &mut Engine, op: Operation) {
 pub fn db_engine_test() {
     // let dir = TempDir::new().unwrap();
     // let mut engine = Engine::new(Some(dir.path().into())).unwrap();
-    let mut engine = match Engine::new(Some(PathBuf::from_str("./table").unwrap())) {
+    let config = DbConfig::get_config().unwrap();
+    let mut engine = match Engine::new(config.clone()) {
         Ok(v) => v,
         Err(e) => {
             panic!("{:?}", e)
         }
     };
 
-    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "10k".to_owned());
+    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "100k".to_owned());
     let active_workload_file = format!("workload/{}.txt", active_workload);
     println!("Active workload is set to {}", active_workload);
     run_workload(&mut engine, &active_workload_file);
@@ -87,7 +86,7 @@ pub fn db_engine_test() {
         .unwrap();
     writeln!(output_file, "{:?}", metrics).unwrap();
     drop(engine);
-    remove_dir_all("./table").unwrap();
+    remove_dir_all(&config.root_dir).unwrap();
     sleep(Duration::from_secs(10)); // giving time to remove all dir
 }
 
@@ -95,14 +94,16 @@ pub fn db_engine_test() {
 pub fn db_engine_controlled_recovery_test() {
     // let dir = TempDir::new().unwrap();
     // let mut engine = Engine::new(Some(dir.path().into())).unwrap();
+    let config = DbConfig::get_config().unwrap();
+
     let mut counter = 1;
-    let mut engine = match Engine::new(Some(PathBuf::from_str("./table").unwrap())) {
+    let mut engine = match Engine::new(config.clone()) {
         Ok(v) => Some(v),
         Err(e) => {
             panic!("{:?}", e)
         }
     };
-    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "10k".to_owned());
+    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "100k".to_owned());
     let active_workload_file = format!("workload/{}.txt", active_workload);
     println!("Active workload is set to {}", active_workload);
     let file = File::open(active_workload_file).unwrap();
@@ -112,12 +113,12 @@ pub fn db_engine_controlled_recovery_test() {
         if counter % 99999 == 0 {
             // we will delte the engine
             drop(engine);
-            engine = Some(Engine::new(Some(PathBuf::from_str("./table").unwrap())).unwrap());
+            engine = Some(Engine::new(config.clone()).unwrap());
         }
         let op = get_operation(&line.unwrap());
         execute_op(engine.as_mut().unwrap(), op);
         counter += 1;
     }
     drop(engine);
-    remove_dir_all("./table").unwrap();
+    remove_dir_all(&config.root_dir).unwrap();
 }

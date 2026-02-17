@@ -1,9 +1,8 @@
 use std::collections::VecDeque;
 
 use crate::database::{
-    config::{
-        MemtableConfig,
-        variants::{MemtableMangerVariant, MemtableVariant},
+    config::memtable_config::{
+        MemtableConfig, {MemtableMangerVariant, MemtableVariant},
     },
     memtable::{
         Memtable,
@@ -27,7 +26,7 @@ pub fn build_memtable_manager(
             let manager = DefaultManger::intialize(
                 active_memtable,
                 VecDeque::default(),
-                memtable_config.max_memtable_size,
+                memtable_config.max_memtable_size as u64,
                 memtable_generator,
             );
             return Ok(Box::new(manager));

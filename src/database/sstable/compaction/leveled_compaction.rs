@@ -4,7 +4,6 @@ use std::{
     fs::{File, create_dir_all},
     io::Write,
     mem::take,
-    path::PathBuf,
     sync::{Arc, OnceLock, RwLock},
     vec,
 };
@@ -13,7 +12,9 @@ use byteorder::{BigEndian, WriteBytesExt};
 
 use crate::database::{
     Entry, OwnedEntry,
-    config::CONFIG,
+    config::{
+        bloom_config::BloomConfig, compaction_config::CompactionConfig, index_config::IndexConfig,
+    },
     sstable::{
         compaction::Compaction,
         errors::SSTableError,
@@ -28,38 +29,23 @@ use crate::database::{
 
 pub struct LevelCompaction {
     version_manager: Arc<RwLock<VersionManager>>,
-    root_dir: PathBuf,
-    min_l0_file_count: u16,
-    max_levels: u16,
-    base_enteries_per_table: u16,
-    level_enteries_growth_factor: u16,
-    level_base_size: u64,
-    level_size_growth_factor: u64,
-    index_block_min_bytes: u64,
+    config: CompactionConfig,
+    bloom_config: BloomConfig,
+    index_config: IndexConfig,
 }
 
 impl LevelCompaction {
     pub fn new(
         version_manager: Arc<RwLock<VersionManager>>,
-        min_l0_file_count: u16,
-        max_levels: u16,
-        base_enteries_per_table: u16,
-        level_enteries_growth_factor: u16,
-        level_base_size: u64,
-        level_size_growth_factor: u64,
-        index_block_min_bytes: u64,
-        root_dir: PathBuf,
+        config: &CompactionConfig,
+        bloom_config: &BloomConfig,
+        index_config: &IndexConfig,
     ) -> Self {
         Self {
             version_manager,
-            min_l0_file_count,
-            max_levels,
-            base_enteries_per_table,
-            level_enteries_growth_factor,
-            level_base_size,
-            level_size_growth_factor,
-            index_block_min_bytes,
-            root_dir,
+            config: config.clone(),
+            bloom_config: bloom_config.clone(),
+            index_config: index_config.clone(),
         }
     }
     fn encode_table(
@@ -69,7 +55,7 @@ impl LevelCompaction {
         enteries: &[OwnedEntry],
     ) -> Result<SSTMetadata, SSTableError> {
         assert!(enteries.len() > 0);
-        let level_path = self.root_dir.join(format!("l{}", level));
+        let level_path = self.config.root_dir.join(format!("l{}", level));
         create_dir_all(&level_path)?;
         let new_table_path = level_path.join(table_id.to_string());
         let mut writer = File::options()
@@ -77,17 +63,17 @@ impl LevelCompaction {
             .create_new(true)
             .open(&new_table_path)?;
 
-        let mut bloom = BloomFactory::build_bloom_filter(&CONFIG.bloom);
-        let mut index = IndexFactory::build_index(&CONFIG.index);
+        let mut bloom = BloomFactory::build_bloom_filter(&self.bloom_config);
+        let mut index = IndexFactory::build_index(&self.index_config);
 
         let mut bytes_encoded = 0;
-        let mut byte_encoded_since_last_index = self.index_block_min_bytes;
+        let mut byte_encoded_since_last_index = self.index_config.index_block_min_size as u64;
         let first_key = enteries[0].get_id().into();
         let last_key = enteries[enteries.len() - 1].get_id().into();
         for i in enteries {
             let i = Entry::from(i);
             // check if entry is eligible for entry
-            if byte_encoded_since_last_index >= self.index_block_min_bytes {
+            if byte_encoded_since_last_index >= self.index_config.index_block_min_size as u64 {
                 index.add_entry(i.get_key(), bytes_encoded);
                 byte_encoded_since_last_index = 0;
             }
@@ -206,7 +192,7 @@ impl LevelCompaction {
             }
             // else if the last key of enteris is smaller than current table it means the entries sstable should be in front of current
             else if enteries.len() > 0 && table.key_range.first_key > last_key {
-                let original_enteries = if level < self.max_levels {
+                let original_enteries = if level < self.config.max_level_count as u16 {
                     take(&mut enteries)
                 } else {
                     // remove tombstones in max level
@@ -221,9 +207,9 @@ impl LevelCompaction {
                         .collect()
                 };
                 // currently we are merging all enteries to single sstable but it should be multiple tables
-                let max_enteries_per_sstable = (self.level_enteries_growth_factor)
+                let max_enteries_per_sstable = (self.config.level_entries_growth_factor)
                     .pow(level.into())
-                    * self.base_enteries_per_table;
+                    * self.config.base_entries_per_table;
                 // we will split the whole enteries into the block the size calculated
                 for entry_group in original_enteries.chunks(max_enteries_per_sstable as usize) {
                     let sstable_meta = self
@@ -239,8 +225,9 @@ impl LevelCompaction {
         }
         // entereis may be added at the end
         if enteries.len() > 0 {
-            let max_enteries_per_sstable = (self.level_enteries_growth_factor).pow(level.into())
-                * self.base_enteries_per_table;
+            let max_enteries_per_sstable = (self.config.level_entries_growth_factor)
+                .pow(level.into())
+                * self.config.base_entries_per_table;
             // we will split the whole enteries into the block the size calculated
             for entry_group in enteries.chunks(max_enteries_per_sstable as usize) {
                 let sstable_meta = self
@@ -258,7 +245,7 @@ impl Compaction for LevelCompaction {
         let version_manager = self.version_manager.read().unwrap();
         let version = version_manager.get_latest_version();
         match version.get_level_tables(0) {
-            Some(tables) if tables.len() < self.min_l0_file_count as usize => false,
+            Some(tables) if tables.len() < self.config.min_l0_file_count as usize => false,
             None => false,
             _ => true,
         }
@@ -295,9 +282,9 @@ impl Compaction for LevelCompaction {
         // no we have a single iterator over all the table in l0
         // now we will set merge this table to the l1 and so on
         let mut new_version_lists = vec![vec![]];
-        for i in 1..self.max_levels {
+        for i in 1..self.config.max_level_count {
             let mut new_li_meta = self
-                .compact_ln(i.into(), merged_enteries, &version)
+                .compact_ln(i as u16, merged_enteries, &version)
                 .unwrap();
             // next level we will choose last table only (for now as it is easy to pop)
             let mut li_total_size = 0;
@@ -305,8 +292,10 @@ impl Compaction for LevelCompaction {
                 li_total_size += i.get_size();
             }
             // we will check if the level size is exceeding the threshold (to trigger compaction again)
-            if li_total_size < (self.level_size_growth_factor).pow(i.into()) * self.level_base_size
-                || i == self.max_levels
+            if li_total_size
+                < (self.config.level_size_growth_factor as u64).pow(i as u32)
+                    * self.config.level_base_size as u64
+                || i == self.config.max_level_count
             {
                 // we will not break to avoid missing levels in the updated version
                 // we have to push all the levels to the updated version
@@ -320,7 +309,7 @@ impl Compaction for LevelCompaction {
             }
             // we will pop the last 2 enteries if there are and use them as a new version list
             // and skip the last level as  we can't compact it to next level
-            if i < self.max_levels - 1 {
+            if i < self.config.max_level_count - 1 {
                 merged_enteries = new_li_meta.pop().unwrap().item_list().unwrap();
                 let mut tables_to_be_poped = max(6 - i, 2);
                 while new_li_meta.is_empty() && tables_to_be_poped > 0 {

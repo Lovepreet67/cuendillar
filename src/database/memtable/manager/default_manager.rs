@@ -69,13 +69,14 @@ impl MemtableManager for DefaultManger {
         return self.immutable_memtables.back().map(|b| b.as_ref());
     }
     fn mark_pushed(&mut self, memetable_id: uuid::Uuid) -> Result<(), MemtableError> {
-        if let Some(first_memtable) = self.immutable_memtables.front() {
+        if let Some(first_memtable) = self.immutable_memtables.back() {
             if first_memtable.get_id() != &memetable_id {
                 return Err(MemtableError::InvalidCandidateId);
             }
-            self.immutable_memtables.pop_back();
-            return Ok(());
+        } else {
+            return Err(MemtableError::NoImmutableMemtableExist);
         }
-        Err(MemtableError::NoImmutableMemtableExist)
+        self.immutable_memtables.pop_back();
+        return Ok(());
     }
 }

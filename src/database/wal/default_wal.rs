@@ -8,7 +8,7 @@ use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use crc::Crc;
 
 use crate::database::{
-    config::CONFIG,
+    config::wal_config::{WALConfig, WALVariant},
     wal::{MAGIC_NUMBER, WAL, WALIterator, errors::WALError},
 };
 
@@ -20,24 +20,23 @@ fn eight_align_addition(value: u64) -> u64 {
 }
 
 pub struct DefaultWAL {
+    pub config: WALConfig,
     active_log: Option<File>,
-    wal_dir: PathBuf,
-    wal_sync_group_size: u64,
     counter: u64,
     curr_offset: u64, // this will be used for lsn number, it will be globaly increasing accross files
     last_rotation_offset: u64, // offset at which last rotation happened
     crc_computer: Crc<u32>,
 }
 impl DefaultWAL {
-    pub fn new(wal_dir: PathBuf, wal_sync_group_size: u64) -> Result<Self, WALError> {
-        if !wal_dir.exists() {
-            create_dir_all(&wal_dir)?;
+    pub fn new(config: &WALConfig) -> Result<Self, WALError> {
+        assert_eq!(config.variant, WALVariant::Default);
+        if !config.wal_dir.exists() {
+            create_dir_all(&config.wal_dir)?;
         }
 
         let mut wal = Self {
-            wal_dir,
+            config: config.clone(),
             active_log: None,
-            wal_sync_group_size,
             counter: 0,
             curr_offset: 0,
             last_rotation_offset: 0,
@@ -45,7 +44,7 @@ impl DefaultWAL {
         };
         let files = wal.get_all_files()?;
         let (current_offset, active_log_file) = if files.len() == 0 {
-            let new_file_path = wal.wal_dir.join("0.wal");
+            let new_file_path = config.wal_dir.join("0.wal");
             let new_file = File::options()
                 .create(true)
                 .append(true)
@@ -60,6 +59,7 @@ impl DefaultWAL {
                 files.iter().skip(1).map(|item| item.1.clone()).collect(),
                 Some(BufReader::new(active_file)),
                 wal.crc_computer.clone(),
+                config.wal_max_payload_len_in_bytes,
             );
             // now we will replay the wal
             for log in wal_iterator {
@@ -123,7 +123,7 @@ impl DefaultWAL {
     }
     pub fn rotate(&mut self) -> Result<(), WALError> {
         let new_log_file_id = format!("{}.wal", self.curr_offset);
-        let new_log_file_path = self.wal_dir.join(&new_log_file_id);
+        let new_log_file_path = self.config.wal_dir.join(&new_log_file_id);
         let new_log_file = File::options()
             .create_new(true)
             .append(true)
@@ -139,7 +139,7 @@ impl DefaultWAL {
     }
     fn get_all_files(&self) -> Result<Vec<(u64, PathBuf)>, WALError> {
         // we will check for the file and read its last entry
-        let dir_enteries = read_dir(&self.wal_dir)?;
+        let dir_enteries = read_dir(&self.config.wal_dir)?;
         let mut files = vec![];
         for dir_entry in dir_enteries {
             let dir_entry = dir_entry?;
@@ -164,12 +164,12 @@ impl DefaultWAL {
 }
 impl WAL for DefaultWAL {
     fn append_log(&mut self, payload: &[u8]) -> Result<u64, WALError> {
-        if payload.len() as u64 > CONFIG.wal.wal_max_payload_len {
+        if payload.len() as u64 > self.config.wal_max_payload_len_in_bytes {
             return Err(WALError::PayloadLengthOutOfBound(payload.len() as u64));
         }
         // do rotation in case of file size exceed
         if self.active_log.is_none()
-            || self.curr_offset - self.last_rotation_offset > CONFIG.wal.wal_file_size
+            || self.curr_offset - self.last_rotation_offset > self.config.wal_file_size_in_bytes
         {
             self.rotate()?;
         }
@@ -188,19 +188,20 @@ impl WAL for DefaultWAL {
         active_log.write_all(&local_buff)?;
         self.curr_offset += local_buff.len() as u64;
         self.counter += 1;
-        if self.counter >= self.wal_sync_group_size {
+        if self.counter >= self.config.wal_group_sync_size {
             self.counter = 0;
-            active_log.sync_data()?;
+            active_log.sync_all()?;
         }
         Ok(self.curr_offset)
     }
     fn read(&self, offset: u64) -> Result<Box<dyn WALIterator>, WALError> {
         let files = self.get_all_files()?;
-        if files.len() == 0 {
+        if files.len() == 0 || offset >= self.curr_offset {
             return Ok(Box::new(DefaultWALIterator::new(
                 vec![],
                 None,
                 self.crc_computer.clone(),
+                self.config.wal_max_payload_len_in_bytes,
             )));
         }
 
@@ -221,14 +222,14 @@ impl WAL for DefaultWAL {
             .collect::<Vec<PathBuf>>();
         // now we will open the first file and move the pointer to the lsn to
         let mut active_file = File::options().read(true).open(&files_to_be_included[0])?;
-        // we must check if the specified offset is in the file bounderies or not
-        // TODO: check if the offset is legal for the specified file or not
-        // Posix allow seeking beyond file EOF we have to check to detect file corruption
+        // we must check if the specified offset is in the file bounderies or not, we are making sure of this by checking if request offset is less than the
+        // current offset as offset can only happen for last file which will be checked on the entry of this function
         active_file.seek(std::io::SeekFrom::Start(offset_inside_file))?;
         return Ok(Box::new(DefaultWALIterator::new(
             files_to_be_included,
             Some(BufReader::new(active_file)),
             self.crc_computer.clone(),
+            self.config.wal_max_payload_len_in_bytes,
         )));
     }
     fn flush_wal(&mut self, offset: u64) -> Result<(), WALError> {
@@ -244,6 +245,7 @@ impl WAL for DefaultWAL {
             return Ok(());
         }
         // NOTE: Files may be in use need to check in future
+        // for now we can be sure that iterator will be creator only on recovery during which flush will not happen
         for i in 0..file_index - 1 {
             remove_file(&files[i].1)?;
         }
@@ -257,12 +259,14 @@ pub struct DefaultWALIterator {
     error: Option<WALError>,
     checksum_algo: Crc<u32>,
     index: usize,
+    wal_max_payload_len_in_bytes: u64,
 }
 impl DefaultWALIterator {
     pub fn new(
         files: Vec<PathBuf>,
         active_file: Option<BufReader<File>>,
         checksum_algo: Crc<u32>,
+        wal_max_payload_len_in_bytes: u64,
     ) -> Self {
         Self {
             files,
@@ -270,6 +274,7 @@ impl DefaultWALIterator {
             checksum_algo,
             index: 0,
             error: None,
+            wal_max_payload_len_in_bytes,
         }
     }
     fn read_record(&mut self) -> Result<Option<(u64, Vec<u8>)>, WALError> {
@@ -308,7 +313,7 @@ impl DefaultWALIterator {
         };
         let checksum = active_file.read_u32::<BigEndian>()?;
         let payload_len = active_file.read_u64::<BigEndian>()?;
-        if payload_len > CONFIG.wal.wal_max_payload_len {
+        if payload_len > self.wal_max_payload_len_in_bytes {
             return Err(WALError::PayloadLengthOutOfBound(lsn));
         }
 

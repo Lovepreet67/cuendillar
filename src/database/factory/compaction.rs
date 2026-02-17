@@ -1,10 +1,9 @@
-use std::{
-    path::PathBuf,
-    sync::{Arc, RwLock},
-};
+use std::sync::{Arc, RwLock};
 
 use crate::database::{
-    config::CompactionConfig,
+    config::{
+        bloom_config::BloomConfig, compaction_config::CompactionConfig, index_config::IndexConfig,
+    },
     sstable::{
         compaction::{Compaction, leveled_compaction::LevelCompaction},
         version_manager::VersionManager,
@@ -13,23 +12,13 @@ use crate::database::{
 
 pub fn build_compaction(
     config: &CompactionConfig,
-    root_dir: PathBuf,
+    bloom_config: &BloomConfig,
+    index_config: &IndexConfig,
     vm: Arc<RwLock<VersionManager>>,
-    index_block_min_bytes: u64,
 ) -> Box<dyn Compaction> {
     match config.variant {
-        crate::database::config::variants::CompactionVariant::Leveled => {
-            Box::new(LevelCompaction::new(
-                vm,
-                config.min_l0_file_count,
-                config.max_level_count,
-                config.base_entries_per_table,
-                config.level_entries_growth_factor,
-                config.level_base_size,
-                config.level_size_growth_factor,
-                index_block_min_bytes,
-                root_dir,
-            ))
+        crate::database::config::compaction_config::CompactionVariant::Leveled => {
+            Box::new(LevelCompaction::new(vm, config, bloom_config, index_config))
         }
     }
 }

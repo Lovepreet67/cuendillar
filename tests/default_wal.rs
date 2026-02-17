@@ -3,8 +3,10 @@ use std::{
     io::{BufRead, BufReader},
 };
 
-use cuendillar::database::wal::{WAL, default_wal::DefaultWAL};
-use tempfile::TempDir;
+use cuendillar::database::{
+    config::DbConfig,
+    wal::{WAL, default_wal::DefaultWAL},
+};
 
 pub enum Operation {
     Get(Vec<u8>, bool, Vec<u8>),
@@ -98,15 +100,16 @@ pub fn default_wal_test() {
     let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "10k".to_owned());
     let active_workload_file = format!("workload/{}.txt", active_workload);
     println!("Active workload is set to {}", active_workload);
-    let root_dir = TempDir::new().unwrap();
+    // let root_dir = TempDir::new().unwrap();
     // let root_dir = PathBuf::from_str("./wal").unwrap();
-    let default_wal = DefaultWAL::new(root_dir.path().into(), 100).unwrap();
+    let wal_config = DbConfig::get_config().unwrap().wal.clone();
+    let default_wal = DefaultWAL::new(&wal_config).unwrap();
     let wal = Box::new(default_wal);
     run_workload(wal, &active_workload_file);
 
     // now we will use new wal
 
-    let default_wal2 = DefaultWAL::new(root_dir.path().into(), 100).unwrap();
+    let default_wal2 = DefaultWAL::new(&wal_config).unwrap();
     let wal2 = Box::new(default_wal2);
     verify_wal(wal2, &active_workload_file);
 }

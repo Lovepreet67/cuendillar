@@ -206,12 +206,9 @@ impl Version {
 #[cfg(test)]
 mod test {
 
-    use std::path::PathBuf;
-
-    use tempfile::TempDir;
-
     use crate::database::{
         Entry,
+        config::DbConfig,
         memtable::{Memtable, vector_memtable::VectorMemtable},
         sstable::version_manager::VersionManager,
     };
@@ -236,8 +233,8 @@ mod test {
         for i in entities.clone().into_iter().enumerate() {
             vm.insert(i.1, i.0 as u64);
         }
-        let dir = TempDir::new().unwrap();
-        let version_manager = VersionManager::new(PathBuf::from(dir.path())).unwrap();
+        let (config, _dir) = DbConfig::get_test_config();
+        let version_manager = VersionManager::new(config).unwrap();
         let v1 = version_manager.push_memtable(&vm).unwrap();
         assert_eq!(
             v1.find(b"id3").unwrap(),
@@ -281,8 +278,8 @@ mod test {
         for i in entities1.clone().into_iter().enumerate() {
             vm.insert(i.1, i.0 as u64);
         }
-        let dir = TempDir::new().unwrap();
-        let mut version_manager = VersionManager::new(PathBuf::from(dir.path())).unwrap();
+        let (config, _dir) = DbConfig::get_test_config();
+        let mut version_manager = VersionManager::new(config).unwrap();
         let v1 = version_manager.push_memtable(&vm).unwrap();
         version_manager.push_l0_update(v1, vm.get_wal_offset());
         let entities2 = vec![
