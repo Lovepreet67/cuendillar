@@ -7,7 +7,6 @@ mod tests;
 pub mod wal_entry;
 
 pub const MAGIC_NUMBER: u64 = 0x123232;
-pub const MAX_PAYLOAD_LEN: u64 = 10000000;
 
 pub trait WAL: Send + Sync {
     /// this function will return the offset to which next log will start

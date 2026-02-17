@@ -110,9 +110,9 @@ impl DbConfig {
         // first we will generate the root_dir to get the default configs for some parts
         let partial_figment = Figment::new().merge(Toml::file(&config_file_path));
         // now we will get the root_dir and generate the default configs from it
-        let root_dir: PathBuf = partial_figment
-            .extract_inner("root_dir")
-            .expect("root_dir is required");
+        let root_dir: PathBuf = partial_figment.extract_inner("root_dir").map_err(|_e| {
+            ConfigError::ExtractionError(format!("Root dir is required in the config"))
+        })?;
         let sstable_root_dir: PathBuf = partial_figment
             .extract_inner("sstable_root_dir")
             .unwrap_or_else(|_| root_dir.join("sstable"));
@@ -122,7 +122,7 @@ impl DbConfig {
             .merge(Serialized::defaults(dynamic_defaults))
             .merge(Toml::file(config_file_path))
             .extract()
-            .expect("Failed to load DB config from path");
+            .map_err(|e| ConfigError::ExtractionError(format!("{:?}", e)))?;
         // TODO: all the paths should be canonicalized
         config.validate()?;
         Ok(Arc::new(config))

@@ -7,7 +7,7 @@ use crate::database::{OwnedEntry, wal::errors::WALError};
 #[derive(Default)]
 pub struct WALEntry {
     pub lsn: u64,
-    pub checksum: u16,
+    pub checksum: u32,
     pub payload: Vec<u8>,
 }
 impl WALEntry {
@@ -16,7 +16,7 @@ impl WALEntry {
     }
     pub fn decode(reader: &mut dyn Read) -> Result<WALEntry, WALError> {
         let lsn = reader.read_u64::<BigEndian>()?;
-        let checksum = reader.read_u16::<BigEndian>()?;
+        let checksum = reader.read_u32::<BigEndian>()?;
         let payload_len = reader.read_u64::<BigEndian>()?;
         let mut payload = vec![0; payload_len as usize];
 

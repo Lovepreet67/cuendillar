@@ -74,7 +74,7 @@ pub fn db_engine_test() {
         }
     };
 
-    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "10k".to_owned());
+    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "1m".to_owned());
     let active_workload_file = format!("workload/{}.txt", active_workload);
     println!("Active workload is set to {}", active_workload);
     run_workload(&mut engine, &active_workload_file);
@@ -103,7 +103,7 @@ pub fn db_engine_controlled_recovery_test() {
             panic!("{:?}", e)
         }
     };
-    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "10k".to_owned());
+    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "1m".to_owned());
     let active_workload_file = format!("workload/{}.txt", active_workload);
     println!("Active workload is set to {}", active_workload);
     let file = File::open(active_workload_file).unwrap();

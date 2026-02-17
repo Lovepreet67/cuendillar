@@ -190,13 +190,13 @@ impl WAL for DefaultWAL {
         self.counter += 1;
         if self.counter >= self.config.wal_group_sync_size {
             self.counter = 0;
-            active_log.sync_data()?;
+            active_log.sync_all()?;
         }
         Ok(self.curr_offset)
     }
     fn read(&self, offset: u64) -> Result<Box<dyn WALIterator>, WALError> {
         let files = self.get_all_files()?;
-        if files.len() == 0 {
+        if files.len() == 0 || offset >= self.curr_offset {
             return Ok(Box::new(DefaultWALIterator::new(
                 vec![],
                 None,
@@ -222,9 +222,8 @@ impl WAL for DefaultWAL {
             .collect::<Vec<PathBuf>>();
         // now we will open the first file and move the pointer to the lsn to
         let mut active_file = File::options().read(true).open(&files_to_be_included[0])?;
-        // we must check if the specified offset is in the file bounderies or not
-        // TODO: check if the offset is legal for the specified file or not
-        // Posix allow seeking beyond file EOF we have to check to detect file corruption
+        // we must check if the specified offset is in the file bounderies or not, we are making sure of this by checking if request offset is less than the
+        // current offset as offset can only happen for last file which will be checked on the entry of this function
         active_file.seek(std::io::SeekFrom::Start(offset_inside_file))?;
         return Ok(Box::new(DefaultWALIterator::new(
             files_to_be_included,
@@ -246,6 +245,7 @@ impl WAL for DefaultWAL {
             return Ok(());
         }
         // NOTE: Files may be in use need to check in future
+        // for now we can be sure that iterator will be creator only on recovery during which flush will not happen
         for i in 0..file_index - 1 {
             remove_file(&files[i].1)?;
         }
