@@ -27,36 +27,70 @@ pub struct Metrics {
 }
 
 pub struct Engine {
-    wal_manager: Box<dyn WAL>,
-    memtable_manager: Box<dyn MemtableManager>,
+    config: Arc<DbConfig>,
+    wal_manager: Arc<RwLock<Box<dyn WAL>>>,
+    memtable_manager: Arc<RwLock<Box<dyn MemtableManager>>>,
     version_manager: Arc<RwLock<VersionManager>>,
     write_count: u64,
     pub metrics: Metrics,
     workers: Vec<JoinHandle<u64>>,
     under_shutdown: Arc<AtomicBool>,
+    pushing_memtable: Arc<AtomicBool>,
 }
 
 impl Engine {
     fn push_memetable(&mut self) -> Result<(), EngineError> {
         // we will fetch the immutable table from the memtable_manager
-        let ready_to_push_memetable = self.memtable_manager.get_memtable_to_push();
+        let ready_to_push_memetable = self.memtable_manager.read()?.get_memtable_to_push();
         if ready_to_push_memetable.is_none() {
             return Ok(());
         }
         let ready_to_push_memetable = ready_to_push_memetable.unwrap();
-        // push it to sstable.
-        let sst_meta = self
-            .version_manager
-            .read()?
-            .push_memtable(ready_to_push_memetable)?;
-        self.version_manager
-            .write()?
-            .push_l0_update(sst_meta, ready_to_push_memetable.get_wal_offset());
-        // signal memetbale manager to remove that memtable
-        self.wal_manager
-            .flush_wal(ready_to_push_memetable.get_wal_offset())?; // avoiding flush foor now
-        self.memtable_manager
-            .mark_pushed(ready_to_push_memetable.get_id().clone())?;
+        // now we will spun a thread
+        let config = self.config.clone();
+        let version_manager = self.version_manager.clone();
+        let wal_manager = self.wal_manager.clone();
+        let memtable_manager = self.memtable_manager.clone();
+        let pushing_memtable = self.pushing_memtable.clone();
+        let handler = thread::spawn(move || {
+            let result: Result<(), String> = (|| {
+                let sst_meta = VersionManager::push_memtable_static(
+                    &config.sstable_root_dir,
+                    &config.bloom,
+                    &config.index,
+                    ready_to_push_memetable.clone(),
+                )
+                .map_err(|e| format!("SST generation failed: {:?}", e))?;
+
+                version_manager
+                    .write()
+                    .map_err(|e| format!("VersionManager lock poisoned: {:?}", e))?
+                    .push_l0_update(sst_meta, ready_to_push_memetable.get_wal_offset());
+
+                wal_manager
+                    .write()
+                    .map_err(|e| format!("WALManager lock poisoned: {:?}", e))?
+                    .flush_wal(ready_to_push_memetable.get_wal_offset())
+                    .map_err(|e| format!("WAL flush failed: {:?}", e))?;
+
+                memtable_manager
+                    .write()
+                    .map_err(|e| format!("MemtableManager lock poisoned: {:?}", e))?
+                    .mark_pushed(ready_to_push_memetable.get_id().clone())
+                    .map_err(|e| format!("Mark pushed failed: {:?}", e))?;
+
+                Ok(())
+            })();
+
+            if let Err(err) = result {
+                eprintln!("Background memtable push failed: {}", err);
+            }
+
+            pushing_memtable.store(false, std::sync::atomic::Ordering::Release);
+            return 0;
+        });
+
+        self.workers.push(handler);
         return Ok(());
     }
     pub fn new(config: Arc<DbConfig>) -> Result<Self, EngineError> {
@@ -74,23 +108,27 @@ impl Engine {
 
         // now we know have both version manager and wal_manager now we will read the entries from wal manger and write it to engine
         let mut engine = Self {
-            wal_manager: wal_manager,
-            memtable_manager: memetable_manager,
+            config: config.clone(),
+            wal_manager: Arc::new(RwLock::new(wal_manager)),
+            memtable_manager: Arc::new(RwLock::new(memetable_manager)),
             version_manager: version_manager.clone(),
             write_count: 0,
             metrics: Metrics::default(),
             workers: Vec::default(),
             under_shutdown: Arc::new(AtomicBool::new(false)),
+            pushing_memtable: Arc::new(AtomicBool::new(false)),
         };
         let last_commited_offset = version_manager
             .read()?
             .get_latest_version()
             .get_commited_wal_offset();
-        let entries = engine.wal_manager.read(last_commited_offset)?;
+        let engine_wal_manager = engine.wal_manager.read()?;
+        let mut engine_memtable_manager = engine.memtable_manager.write()?;
+        let entries = engine_wal_manager.read(last_commited_offset)?;
         for entry in entries {
             if let Ok((lsn, payload)) = entry {
                 let entry = OwnedEntry::decode(&mut payload.as_slice())?;
-                engine.memtable_manager.insert((&entry).into(), lsn)?;
+                engine_memtable_manager.insert((&entry).into(), lsn)?;
             } else {
                 panic!("Error while reading the wal")
             }
@@ -126,26 +164,34 @@ impl Engine {
 
         let cleaner = Cleaner::new(clearner_config, version_manager.clone(), under_shutdown);
         engine.workers.push(cleaner.init());
+        drop(engine_memtable_manager);
+        drop(engine_wal_manager);
         Ok(engine)
     }
     pub fn write(&mut self, e: Entry) -> Result<(), EngineError> {
         self.metrics.write_count += 1;
-        if self.write_count % 500 == 0 {
-            if self.memtable_manager.require_rotation() {
-                self.memtable_rotation()?;
+        if self.memtable_manager.read()?.require_rotation() {
+            self.memtable_rotation()?;
+            if !self
+                .pushing_memtable
+                .load(std::sync::atomic::Ordering::Relaxed)
+            {
+                self.pushing_memtable
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
+                self.push_memetable()?;
             }
-            self.push_memetable()?;
         }
+
         let mut payload = Vec::new();
         e.encode(&mut payload)?;
-        let wal_offset = self.wal_manager.append_log(&payload)?;
-        self.memtable_manager.insert(e, wal_offset)?;
+        let wal_offset = self.wal_manager.write()?.append_log(&payload)?;
+        self.memtable_manager.write()?.insert(e, wal_offset)?;
         self.write_count += 1;
         Ok(())
     }
     pub fn find(&mut self, key: &[u8]) -> Result<Option<OwnedEntry>, EngineError> {
         self.metrics.memtable_hits += 1;
-        let result = self.memtable_manager.find(key)?;
+        let result = self.memtable_manager.read()?.find(key)?.map(|x| x.into());
         if result.is_none() {
             self.metrics.sstable_hits += 1;
             let version_manager = self.version_manager.read()?;
@@ -154,13 +200,13 @@ impl Engine {
             return Ok(sstable_result);
         }
         Ok(match result {
-            Some(x) => Some(x.into()),
+            Some(x) => Some(x),
             None => None,
         })
     }
     pub fn memtable_rotation(&mut self) -> Result<(), EngineError> {
         let uid = uuid::Uuid::new_v4();
-        self.memtable_manager.rotate(uid)?;
+        self.memtable_manager.write()?.rotate(uid)?;
         Ok(())
     }
 }

@@ -2,14 +2,14 @@ use std::{
     collections::{HashSet, VecDeque},
     fs::{File, create_dir_all},
     io::Write,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, OnceLock},
 };
 
 use byteorder::{BigEndian, WriteBytesExt};
 
 use crate::database::{
-    config::DbConfig,
+    config::{DbConfig, bloom_config::BloomConfig, index_config::IndexConfig},
     factory::wal::build_wal_manger,
     memtable::Memtable,
     sstable::{
@@ -107,7 +107,7 @@ impl VersionManager {
 
     /// This Function doesn't change anything it returns the new version which caller need to to add to version manager
     /// Calling push_version
-    pub fn push_memtable(&self, mt: &dyn Memtable) -> Result<SSTMetadata, SSTableError> {
+    pub fn push_memtable(&self, mt: Arc<dyn Memtable>) -> Result<SSTMetadata, SSTableError> {
         assert!(mt.size() > 0);
         let new_table_id = format!("{}", mt.get_id());
         let l0_dir = self.root_dir.join("l0");
@@ -191,6 +191,97 @@ impl VersionManager {
         // we will insert this to the the L0 of the latest version
         Ok(sst_meta)
     }
+
+    pub fn push_memtable_static(
+        sstable_root_dir: &Path,
+        bloom_config: &BloomConfig,
+        index_config: &IndexConfig,
+        mt: Arc<dyn Memtable>,
+    ) -> Result<SSTMetadata, SSTableError> {
+        assert!(mt.size() > 0);
+        let new_table_id = format!("{}", mt.get_id());
+        let l0_dir = sstable_root_dir.join("l0");
+        create_dir_all(&l0_dir)?;
+        let new_table_path = l0_dir.join(&new_table_id);
+        let mut writer = File::options()
+            .append(true)
+            .create_new(true)
+            .open(&new_table_path)?;
+        let mut bloom = BloomFactory::build_bloom_filter(bloom_config);
+        let mut index = IndexFactory::build_index(index_config);
+        let mut bytes_encoded = 0;
+        let mut byte_encoded_since_last_index = INDEX_BLOCK_MIN_BYTES;
+        let mt_iter = mt.iter();
+        let first_key = mt_iter
+            .get_first_entry()
+            .expect("Memtable to Be flushed should contain atleast one entry")
+            .get_key()
+            .into();
+        let last_key = mt_iter.get_last_entry().unwrap().get_key().into();
+        for i in mt_iter {
+            // check if entry is eligible for entry
+            if byte_encoded_since_last_index >= INDEX_BLOCK_MIN_BYTES {
+                index.add_entry(i.get_key(), bytes_encoded);
+                byte_encoded_since_last_index = 0;
+            }
+            let bytes_encoded_for_this_entry = i.encode(&mut writer)?;
+            byte_encoded_since_last_index += bytes_encoded_for_this_entry;
+            bytes_encoded += bytes_encoded_for_this_entry;
+            bloom.add(i.get_key());
+        }
+        index.add_last_offset(bytes_encoded);
+        // now we have written all the entries to file
+
+        // now we will serialize the bloom filter
+        // first we will write the name of bloom filter for deserilization
+        let mut bloom_filter_size = 0;
+        let bloom_name = bloom.get_name().as_bytes();
+        writer.write_u16::<BigEndian>(bloom_name.len() as u16)?;
+        bloom_filter_size += 2;
+        writer.write_all(bloom_name)?;
+        bloom_filter_size += bloom_name.len() as u64;
+        bloom_filter_size += bloom.serialize(&mut writer)?;
+
+        // now we will serialize the index
+        // first we will write the name of index for deserilization
+        let mut index_size = 0;
+        let index_name = index.get_name().as_bytes();
+        writer.write_u16::<BigEndian>(index_name.len() as u16)?;
+        index_size += 2;
+        writer.write_all(index_name)?;
+        index_size += index_name.len() as u64;
+        index_size += index.serialize(&mut writer)?;
+
+        // now we will add the create and add the SSTableKeyRange
+        let key_range = SSTableKeyRange {
+            first_key,
+            last_key,
+        };
+        let key_range_block_size = key_range.serialize(&mut writer)?;
+
+        // now we will create a serialize footer
+        let footer = SSTableFooter::new(
+            bytes_encoded,
+            bloom_filter_size,
+            index_size,
+            key_range_block_size,
+        );
+        footer.seriealize(&mut writer)?;
+        let sst_meta = SSTMetadata::new(
+            *mt.get_id(),
+            bloom.into(),
+            index.into(),
+            key_range.first_key,
+            key_range.last_key,
+            OnceLock::new(),
+            new_table_path,
+            footer,
+        );
+        // now we will update
+        // we will insert this to the the L0 of the latest version
+        Ok(sst_meta)
+    }
+
     pub fn push_l0_update(&mut self, sst_meta: SSTMetadata, commited_wal_offset: u64) {
         let new_version = if self.versions.len() > 0 {
             let latest_version = self.get_latest_version();

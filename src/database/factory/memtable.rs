@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, sync::Arc};
 
 use crate::database::{
     config::memtable_config::{
@@ -16,9 +16,9 @@ pub fn build_memtable_manager(
     memtable_config: &MemtableConfig,
     memtable_id: Option<uuid::Uuid>,
 ) -> Result<Box<dyn MemtableManager>, MemtableError> {
-    let memtable_generator: Box<dyn Fn(Option<uuid::Uuid>) -> Box<dyn Memtable>> =
+    let memtable_generator: Arc<dyn Fn(Option<uuid::Uuid>) -> Box<dyn Memtable> + Send + Sync> =
         match memtable_config.variant {
-            MemtableVariant::Vector => Box::new(|id| Box::new(VectorMemtable::new(id))),
+            MemtableVariant::Vector => Arc::new(|id| Box::new(VectorMemtable::new(id))),
         };
     let active_memtable = memtable_generator(memtable_id);
     match memtable_config.manager_variant {

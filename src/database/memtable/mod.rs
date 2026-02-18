@@ -8,7 +8,7 @@ pub mod manager;
 mod tests;
 pub mod vector_memtable;
 
-pub trait Memtable {
+pub trait Memtable: Send + Sync {
     fn get_id(&self) -> &Uuid;
     fn insert(&mut self, e: Entry, wal_offset: u64);
     fn find(&self, key: &[u8]) -> Result<Option<Entry<'_>>, MemtableError>;

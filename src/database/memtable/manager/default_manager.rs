@@ -1,20 +1,20 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, sync::Arc};
 
 use crate::database::memtable::{Memtable, errors::MemtableError, manager::MemtableManager};
 
 pub struct DefaultManger {
     active_memtable: Box<dyn Memtable>,
-    immutable_memtables: VecDeque<Box<dyn Memtable>>,
+    immutable_memtables: VecDeque<Arc<dyn Memtable>>,
     max_size: u64,
-    memtable_generator: Box<dyn Fn(Option<uuid::Uuid>) -> Box<dyn Memtable>>,
+    memtable_generator: Arc<dyn Fn(Option<uuid::Uuid>) -> Box<dyn Memtable> + Send + Sync>,
 }
 
 impl DefaultManger {
     pub fn intialize(
         active_memtable: Box<dyn Memtable>,
-        immutable_memtables: VecDeque<Box<dyn Memtable>>,
+        immutable_memtables: VecDeque<Arc<dyn Memtable>>,
         max_size: u64,
-        memtable_generator: Box<dyn Fn(Option<uuid::Uuid>) -> Box<dyn Memtable>>,
+        memtable_generator: Arc<dyn Fn(Option<uuid::Uuid>) -> Box<dyn Memtable> + Send + Sync>,
     ) -> Self {
         Self {
             active_memtable,
@@ -55,7 +55,8 @@ impl MemtableManager for DefaultManger {
         id: uuid::Uuid,
     ) -> Result<(), crate::database::memtable::errors::MemtableError> {
         let new_memtable = (self.memtable_generator)(Some(id));
-        let current_active_memtable = std::mem::replace(&mut self.active_memtable, new_memtable);
+        let current_active_memtable =
+            std::mem::replace(&mut self.active_memtable, new_memtable).into();
         self.immutable_memtables.push_front(current_active_memtable);
         Ok(())
     }
@@ -65,8 +66,8 @@ impl MemtableManager for DefaultManger {
     fn require_rotation(&self) -> bool {
         self.active_memtable.size() > self.max_size
     }
-    fn get_memtable_to_push(&self) -> Option<&dyn Memtable> {
-        return self.immutable_memtables.back().map(|b| b.as_ref());
+    fn get_memtable_to_push(&self) -> Option<Arc<dyn Memtable>> {
+        return self.immutable_memtables.back().map(|x| x.clone());
     }
     fn mark_pushed(&mut self, memetable_id: uuid::Uuid) -> Result<(), MemtableError> {
         if let Some(first_memtable) = self.immutable_memtables.back() {

@@ -206,6 +206,8 @@ impl Version {
 #[cfg(test)]
 mod test {
 
+    use std::sync::Arc;
+
     use crate::database::{
         Entry,
         config::DbConfig,
@@ -235,7 +237,7 @@ mod test {
         }
         let (config, _dir) = DbConfig::get_test_config();
         let version_manager = VersionManager::new(config).unwrap();
-        let v1 = version_manager.push_memtable(&vm).unwrap();
+        let v1 = version_manager.push_memtable(Arc::new(vm)).unwrap();
         assert_eq!(
             v1.find(b"id3").unwrap(),
             Some(
@@ -278,9 +280,10 @@ mod test {
         for i in entities1.clone().into_iter().enumerate() {
             vm.insert(i.1, i.0 as u64);
         }
+        let vm = Arc::new(vm);
         let (config, _dir) = DbConfig::get_test_config();
         let mut version_manager = VersionManager::new(config).unwrap();
-        let v1 = version_manager.push_memtable(&vm).unwrap();
+        let v1 = version_manager.push_memtable(vm.clone()).unwrap();
         version_manager.push_l0_update(v1, vm.get_wal_offset());
         let entities2 = vec![
             Entry::Row {
@@ -296,7 +299,8 @@ mod test {
         for i in entities2.clone().into_iter().enumerate() {
             vm2.insert(i.1, (i.0 + 5) as u64);
         }
-        let v2 = version_manager.push_memtable(&vm2).unwrap();
+        let vm2 = Arc::new(vm2);
+        let v2 = version_manager.push_memtable(vm2.clone()).unwrap();
         version_manager.push_l0_update(v2, vm2.get_wal_offset());
         let version = version_manager.get_latest_version();
 

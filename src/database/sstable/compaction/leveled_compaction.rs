@@ -312,7 +312,7 @@ impl Compaction for LevelCompaction {
             if i < self.config.max_level_count - 1 {
                 merged_enteries = new_li_meta.pop().unwrap().item_list().unwrap();
                 let mut tables_to_be_poped = max(6 - i, 2);
-                while new_li_meta.is_empty() && tables_to_be_poped > 0 {
+                while !new_li_meta.is_empty() && tables_to_be_poped > 0 {
                     let mut updated_vec = new_li_meta.pop().unwrap().item_list().unwrap();
                     updated_vec.extend(merged_enteries);
                     merged_enteries = updated_vec;
