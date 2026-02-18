@@ -24,6 +24,12 @@ name = "db_workload_operation"
 path = "benches/db_operation_latency.rs"
 harness = false
 
+[[bench]]
+name = "db_workload_operation_summerize"
+path = "benches/db_operation_latency_summerize.rs"
+harness = false
+
+
 [profile.bench]
 debug = true
 
