@@ -107,7 +107,8 @@ impl Memtable for VectorMemtable {
         self.store.len() as u64
     }
     fn size(&self) -> u64 {
-        self.curr_size
+        // self.curr_size
+        self.store.len() as u64
     }
     fn get_wal_offset(&self) -> u64 {
         self.wal_offset
