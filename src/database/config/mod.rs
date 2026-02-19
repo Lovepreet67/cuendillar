@@ -65,7 +65,6 @@ impl DbConfig {
             bloom: BloomConfig {
                 variant: BloomVariant::Default,
                 bits_per_key: 8,
-                size: 128,
             },
             index: IndexConfig {
                 variant: IndexVariant::Default,

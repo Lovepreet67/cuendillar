@@ -11,19 +11,18 @@ wal_max_payload_len_in_bytes = 1000_000 # 1 MB
 [memtable]
 variant = "vector"
 manager_variant = "default"
-max_memtable_size = 1000
+max_memtable_size = 10_000
 
 [sstable]
 variant = "default"
 
 [bloom]
 variant = "default"
-bits_per_key = 100
-size = 1000
+bits_per_key = 10
 
 [index]
 variant = "default"
-index_block_min_size = 1000
+index_block_min_size = 4096
 
 
 [compaction]
@@ -34,7 +33,7 @@ variant = "leveled"
 base_entries_per_table = 100
 level_entries_growth_factor = 4
 level_size_growth_factor = 4
-level_base_size = 10000
+level_base_size = 100_000
 max_level_count = 5
 
 [cleaning]

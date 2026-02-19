@@ -63,7 +63,7 @@ impl LevelCompaction {
             .create_new(true)
             .open(&new_table_path)?;
 
-        let mut bloom = BloomFactory::build_bloom_filter(&self.bloom_config);
+        let mut bloom = BloomFactory::build_bloom_filter(&self.bloom_config, enteries.len() as u64);
         let mut index = IndexFactory::build_index(&self.index_config);
 
         let mut bytes_encoded = 0;

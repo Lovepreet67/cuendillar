@@ -29,7 +29,6 @@ pub struct VersionManager {
     version_wal: Box<dyn WAL>,
     config: Arc<DbConfig>,
 }
-const INDEX_BLOCK_MIN_BYTES: u64 = 400;
 
 impl VersionManager {
     pub fn new(config: Arc<DbConfig>) -> Result<Self, SSTableError> {
@@ -117,10 +116,10 @@ impl VersionManager {
             .append(true)
             .create_new(true)
             .open(&new_table_path)?;
-        let mut bloom = BloomFactory::build_bloom_filter(&self.config.bloom);
+        let mut bloom = BloomFactory::build_bloom_filter(&self.config.bloom, mt.size());
         let mut index = IndexFactory::build_index(&self.config.index);
         let mut bytes_encoded = 0;
-        let mut byte_encoded_since_last_index = INDEX_BLOCK_MIN_BYTES;
+        let mut byte_encoded_since_last_index = self.config.index.index_block_min_size;
         let mt_iter = mt.iter();
         let first_key = mt_iter
             .get_first_entry()
@@ -130,12 +129,12 @@ impl VersionManager {
         let last_key = mt_iter.get_last_entry().unwrap().get_key().into();
         for i in mt_iter {
             // check if entry is eligible for entry
-            if byte_encoded_since_last_index >= INDEX_BLOCK_MIN_BYTES {
+            if byte_encoded_since_last_index >= self.config.index.index_block_min_size {
                 index.add_entry(i.get_key(), bytes_encoded);
                 byte_encoded_since_last_index = 0;
             }
             let bytes_encoded_for_this_entry = i.encode(&mut writer)?;
-            byte_encoded_since_last_index += bytes_encoded_for_this_entry;
+            byte_encoded_since_last_index += bytes_encoded_for_this_entry as usize;
             bytes_encoded += bytes_encoded_for_this_entry;
             bloom.add(i.get_key());
         }
@@ -207,10 +206,10 @@ impl VersionManager {
             .append(true)
             .create_new(true)
             .open(&new_table_path)?;
-        let mut bloom = BloomFactory::build_bloom_filter(bloom_config);
+        let mut bloom = BloomFactory::build_bloom_filter(bloom_config, mt.size());
         let mut index = IndexFactory::build_index(index_config);
         let mut bytes_encoded = 0;
-        let mut byte_encoded_since_last_index = INDEX_BLOCK_MIN_BYTES;
+        let mut byte_encoded_since_last_index = index_config.index_block_min_size;
         let mt_iter = mt.iter();
         let first_key = mt_iter
             .get_first_entry()
@@ -220,12 +219,12 @@ impl VersionManager {
         let last_key = mt_iter.get_last_entry().unwrap().get_key().into();
         for i in mt_iter {
             // check if entry is eligible for entry
-            if byte_encoded_since_last_index >= INDEX_BLOCK_MIN_BYTES {
+            if byte_encoded_since_last_index >= index_config.index_block_min_size {
                 index.add_entry(i.get_key(), bytes_encoded);
                 byte_encoded_since_last_index = 0;
             }
             let bytes_encoded_for_this_entry = i.encode(&mut writer)?;
-            byte_encoded_since_last_index += bytes_encoded_for_this_entry;
+            byte_encoded_since_last_index += bytes_encoded_for_this_entry as usize;
             bytes_encoded += bytes_encoded_for_this_entry;
             bloom.add(i.get_key());
         }

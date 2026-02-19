@@ -15,15 +15,18 @@ pub struct DefaultBloomFilter {
 }
 
 impl DefaultBloomFilter {
-    pub fn new(config: &BloomConfig) -> Self {
+    pub fn new(config: &BloomConfig, table_size: u64) -> Self {
         assert_eq!(config.variant, BloomVariant::Default);
         Self {
             config: config.clone(),
-            bloom: vec![0; ((config.size + 63) / 64) as usize],
+            bloom: vec![0; (config.bits_per_key * table_size as usize + 63) / 64],
         }
     }
     fn bloom_size(&self) -> u32 {
         self.bloom.len() as u32 * 64 // as single index is containing the 64 bits
+    }
+    fn get_hash_count(&self) -> u32 {
+        ((self.config.bits_per_key as f64 * 0.693).round() as u32).max(1)
     }
     pub fn deserialize(reader: &mut dyn Read) -> Result<Box<Self>, SSTableError> {
         let bits_per_key = reader.read_u32::<BigEndian>()?;
@@ -35,7 +38,6 @@ impl DefaultBloomFilter {
         Ok(Box::new(Self {
             config: BloomConfig {
                 variant: crate::database::config::bloom_config::BloomVariant::Default,
-                size: bloom_size,
                 bits_per_key: bits_per_key as usize,
             },
             bloom,
@@ -51,7 +53,8 @@ impl BloomFilter for DefaultBloomFilter {
         let mut x = key;
         let h1 = murmur3_32(&mut x, 0).unwrap();
         let delta = (h1 >> 17) | (h1 << 15);
-        for i in 0..self.config.bits_per_key as u32 {
+        let k = self.get_hash_count();
+        for i in 0..k as u32 {
             let hi = h1.wrapping_add(i.wrapping_mul(delta)) % self.bloom_size();
 
             // now we will set a bit in the vector
@@ -64,7 +67,8 @@ impl BloomFilter for DefaultBloomFilter {
         let mut x = key;
         let h1 = murmur3_32(&mut x, 0).unwrap();
         let delta = (h1 >> 17) | (h1 << 15);
-        for i in 0..self.config.bits_per_key as u32 {
+        let k = self.get_hash_count();
+        for i in 0..k {
             let hi = h1.wrapping_add(i.wrapping_mul(delta)) % self.bloom_size();
             // now we will set a bit in the vector
             let index = (hi / 64) as usize;

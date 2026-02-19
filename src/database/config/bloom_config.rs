@@ -11,7 +11,6 @@ pub enum BloomVariant {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BloomConfig {
     pub variant: BloomVariant,
-    pub size: usize,
     pub bits_per_key: usize,
 }
 
@@ -23,19 +22,12 @@ impl BloomConfig {
                 self.bits_per_key
             )));
         }
-        if self.size == 0 {
-            return Err(ConfigError::InvalidBloomConfig(format!(
-                "Bloom Size should be greater than 0, provide {}",
-                self.size
-            )));
-        }
         Ok(())
     }
     pub fn get_test_config() -> Self {
         BloomConfig {
             variant: BloomVariant::Default,
             bits_per_key: 8,
-            size: 128,
         }
     }
 }
