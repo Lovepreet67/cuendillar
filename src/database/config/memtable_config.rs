@@ -6,6 +6,8 @@ use crate::database::config::config_error::ConfigError;
 #[serde(rename_all = "lowercase")]
 pub enum MemtableVariant {
     Vector,
+    BTree,
+    Hash,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

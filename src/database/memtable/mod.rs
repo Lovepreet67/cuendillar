@@ -2,7 +2,9 @@ use uuid::Uuid;
 
 use crate::database::{Entry, memtable::errors::MemtableError};
 
+pub mod btree_memtable;
 pub mod errors;
+pub mod hash_memtable;
 pub mod manager;
 #[cfg(test)]
 mod tests;
