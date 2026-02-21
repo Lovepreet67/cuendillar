@@ -20,15 +20,15 @@ pub enum MemtableMangerVariant {
 pub struct MemtableConfig {
     pub variant: MemtableVariant,
     pub manager_variant: MemtableMangerVariant,
-    pub max_memtable_size: usize,
+    pub max_memtable_size_in_mega_bytes: usize,
 }
 
 impl MemtableConfig {
     pub fn validate(&self) -> Result<(), ConfigError> {
-        if self.max_memtable_size <= 10 {
+        if self.max_memtable_size_in_mega_bytes < 1 {
             return Err(ConfigError::InvalidMemtableConfig(format!(
-                "Memtable size should be greater than 10 as smaller memtable will cause performance issue, provide {}",
-                self.max_memtable_size
+                "Memtable size should be greater than 1 as smaller memtable will cause performance issue, provide {}",
+                self.max_memtable_size_in_mega_bytes
             )));
         }
         Ok(())

@@ -64,7 +64,7 @@ impl MemtableManager for DefaultManger {
         Box::new(self.active_memtable.iter())
     }
     fn require_rotation(&self) -> bool {
-        self.active_memtable.size() > self.max_size
+        self.active_memtable.size() > self.max_size * 1000_000 // as max size in MB and size is in Bytes
     }
     fn get_memtable_to_push(&self) -> Option<Arc<dyn Memtable>> {
         return self.immutable_memtables.back().map(|x| x.clone());

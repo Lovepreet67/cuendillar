@@ -28,7 +28,7 @@ pub fn build_memtable_manager(
             let manager = DefaultManger::intialize(
                 active_memtable,
                 VecDeque::default(),
-                memtable_config.max_memtable_size as u64,
+                memtable_config.max_memtable_size_in_mega_bytes as u64,
                 memtable_generator,
             );
             return Ok(Box::new(manager));

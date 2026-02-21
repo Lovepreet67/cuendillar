@@ -116,7 +116,7 @@ impl VersionManager {
             .append(true)
             .create_new(true)
             .open(&new_table_path)?;
-        let mut bloom = BloomFactory::build_bloom_filter(&self.config.bloom, mt.size());
+        let mut bloom = BloomFactory::build_bloom_filter(&self.config.bloom, mt.num_enteries());
         let mut index = IndexFactory::build_index(&self.config.index);
         let mut bytes_encoded = 0;
         let mut byte_encoded_since_last_index = self.config.index.index_block_min_size;
@@ -206,7 +206,7 @@ impl VersionManager {
             .append(true)
             .create_new(true)
             .open(&new_table_path)?;
-        let mut bloom = BloomFactory::build_bloom_filter(bloom_config, mt.size());
+        let mut bloom = BloomFactory::build_bloom_filter(bloom_config, mt.num_enteries());
         let mut index = IndexFactory::build_index(index_config);
         let mut bytes_encoded = 0;
         let mut byte_encoded_since_last_index = index_config.index_block_min_size;

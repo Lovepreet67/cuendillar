@@ -60,7 +60,7 @@ impl DbConfig {
             memtable: MemtableConfig {
                 variant: MemtableVariant::Vector,
                 manager_variant: MemtableMangerVariant::Default,
-                max_memtable_size: 10,
+                max_memtable_size_in_mega_bytes: 64,
             },
             bloom: BloomConfig {
                 variant: BloomVariant::Default,

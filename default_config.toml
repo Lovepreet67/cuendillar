@@ -9,9 +9,9 @@ wal_file_size_in_bytes = 200_00_00_0
 wal_max_payload_len_in_bytes = 1000_000 # 1 MB
 
 [memtable]
-variant = "vector"
+variant = "btree"
 manager_variant = "default"
-max_memtable_size = 10_000
+max_memtable_size_in_mega_bytes = 10
 
 [sstable]
 variant = "default"
