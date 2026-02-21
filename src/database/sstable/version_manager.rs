@@ -58,9 +58,9 @@ impl VersionManager {
             config,
         })
     }
-    pub fn get_latest_version(&self) -> &Version {
+    pub fn get_latest_version(&self) -> Arc<Version> {
         assert!(self.versions.len() > 0);
-        self.versions.back().unwrap()
+        self.versions.back().unwrap().clone()
     }
     // This function will return the sstatble meta which are clear to be droped
     pub fn claim(&mut self) -> Vec<PathBuf> {
@@ -284,7 +284,7 @@ impl VersionManager {
     pub fn push_l0_update(&mut self, sst_meta: SSTMetadata, commited_wal_offset: u64) {
         let new_version = if self.versions.len() > 0 {
             let latest_version = self.get_latest_version();
-            let original_version = latest_version.clone();
+            let original_version = (*latest_version).clone();
             original_version.add_l0_table(sst_meta, commited_wal_offset)
         } else {
             Version::new(vec![vec![sst_meta]], commited_wal_offset)

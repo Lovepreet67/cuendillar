@@ -196,6 +196,7 @@ impl Engine {
             self.metrics.sstable_hits += 1;
             let version_manager = self.version_manager.read()?;
             let latest_version = version_manager.get_latest_version();
+            drop(version_manager);
             let sstable_result = latest_version.find(key)?;
             return Ok(sstable_result);
         }
