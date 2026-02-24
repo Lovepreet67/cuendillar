@@ -6,7 +6,7 @@ use crate::database::{
     },
     sstable::{
         compaction::{Compaction, leveled_compaction::LevelCompaction},
-        version_manager::VersionManager,
+        version::version_manager::VersionManager,
     },
 };
 

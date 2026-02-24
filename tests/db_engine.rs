@@ -6,7 +6,7 @@ use std::{
 };
 
 use cuendillar::database::{OwnedEntry, config::DbConfig, db_engine::Engine};
-
+#[derive(Debug)]
 pub enum Operation {
     Get(Vec<u8>, bool, Vec<u8>),
     Put(Vec<u8>, Vec<u8>),

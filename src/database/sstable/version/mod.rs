@@ -16,8 +16,11 @@ use crate::database::{
             SSTMetadata, SSTableFooter, SSTableKeyRange, bloom_filter::bloom_factory::BloomFactory,
             index::index_factory::IndexFactory,
         },
+        version::version_update::{VersionOperation, VersionUpdate},
     },
 };
+pub mod version_manager;
+pub mod version_update;
 
 #[derive(Clone)]
 pub struct Version {
@@ -128,6 +131,67 @@ impl Version {
         Ok(None)
     }
 
+    pub fn apply_update(&mut self, normalized_update: VersionUpdate) -> Result<(), SSTableError> {
+        use std::collections::HashMap;
+
+        let mut adds: HashMap<usize, Vec<(usize, SSTMetadata)>> = HashMap::new();
+        let mut dels: HashMap<usize, Vec<uuid::Uuid>> = HashMap::new();
+
+        let wal_offset = normalized_update.wal_offset;
+
+        for op in normalized_update.operations {
+            match op {
+                VersionOperation::Add { .. } => {
+                    return Err(SSTableError::General(
+                        "Add without metadata found in apply_update".into(),
+                    ));
+                }
+                VersionOperation::AddWithMeta { level, meta, index } => {
+                    adds.entry(level as usize)
+                        .or_default()
+                        .push((index as usize, meta));
+                }
+                VersionOperation::Del { level, id } => {
+                    dels.entry(level as usize).or_default().push(id);
+                }
+            }
+        }
+
+        let max_level = adds.keys().chain(dels.keys()).copied().max().unwrap_or(0);
+
+        if max_level >= self.levels.len() {
+            self.levels.resize_with(max_level + 1, Vec::new);
+        }
+
+        for (level, ids) in dels {
+            if level >= self.levels.len() {
+                return Err(SSTableError::General(format!(
+                    "Invalid level {} in Del",
+                    level
+                )));
+            }
+
+            let id_set: std::collections::HashSet<_> = ids.into_iter().collect();
+
+            self.levels[level].retain(|meta| !id_set.contains(&meta.id));
+        }
+
+        // 4️⃣ Apply inserts (sorted by index to preserve intent)
+        for (level, mut entries) in adds {
+            let level_vec = &mut self.levels[level];
+
+            // Sort by index to apply deterministically
+            entries.sort_by_key(|(index, _)| *index);
+
+            for (index, meta) in entries {
+                let insert_index = index.min(level_vec.len());
+                level_vec.insert(insert_index, meta);
+            }
+        }
+
+        self.commited_wal_offset = wal_offset;
+        Ok(())
+    }
     pub fn encode(&self, writer: &mut impl Write) -> Result<u64, SSTableError> {
         let mut bytes_written: u64 = 0;
         // write last commited offset
@@ -150,6 +214,62 @@ impl Version {
             }
         }
         Ok(bytes_written)
+    }
+    // this function will convert all the add to add with sstmetadata
+    pub fn normalize_version_update_operation(
+        update: &mut VersionUpdate,
+        root_dir: &Path,
+    ) -> Result<(), SSTableError> {
+        for op in &mut update.operations {
+            // We only transform Add → AddWithMeta
+            let new_op = match op {
+                VersionOperation::Add { level, id, index } => {
+                    let level = *level;
+                    let id = *id;
+                    let index = *index;
+
+                    // Build file path
+                    let table_file_path = root_dir.join(format!("l{}/{}", level, id));
+
+                    // Open SST file
+                    let mut table = File::open(&table_file_path)?;
+
+                    // ---- Read footer ----
+                    table.seek(std::io::SeekFrom::End(-32))?;
+                    let table_footer = SSTableFooter::deserialize(&mut table)?;
+
+                    // ---- Read bloom filter ----
+                    table.seek(std::io::SeekFrom::Start(table_footer.data_block_size))?;
+
+                    let bloom = BloomFactory::deserialize_bloom_filter(&mut table)?;
+
+                    // ---- Read index ----
+                    let index_block = IndexFactory::deserialize_index(&mut table)?;
+
+                    // ---- Read key range ----
+                    let key_range = SSTableKeyRange::deserialize(&mut table)?;
+
+                    let meta = SSTMetadata::new(
+                        id,
+                        bloom.into(),
+                        index_block.into(),
+                        key_range.first_key,
+                        key_range.last_key,
+                        OnceLock::new(), // no FD caching here
+                        table_file_path,
+                        table_footer,
+                    );
+
+                    VersionOperation::AddWithMeta { level, meta, index }
+                }
+
+                // Keep everything else unchanged
+                _ => continue,
+            };
+            // Replace old op with new one
+            *op = new_op;
+        }
+        Ok(())
     }
     pub fn decode(reader: &mut impl Read, root_dir: &Path) -> Result<Version, SSTableError> {
         // read last commited offset
@@ -206,13 +326,13 @@ impl Version {
 #[cfg(test)]
 mod test {
 
-    use std::sync::Arc;
+    use std::{sync::Arc, thread::sleep, time::Duration};
 
     use crate::database::{
         Entry,
         config::DbConfig,
         memtable::{Memtable, vector_memtable::VectorMemtable},
-        sstable::version_manager::VersionManager,
+        sstable::version::{version_manager::VersionManager, version_update::VersionUpdate},
     };
 
     #[test]
@@ -235,8 +355,11 @@ mod test {
         for i in entities.clone().into_iter().enumerate() {
             vm.insert(i.1, i.0 as u64);
         }
+
         let (config, _dir) = DbConfig::get_test_config();
-        let version_manager = VersionManager::new(config).unwrap();
+        let (cleaner_channel_producer, _cleaner_channel_receiver) = std::sync::mpsc::channel();
+
+        let version_manager = VersionManager::new(config, cleaner_channel_producer).unwrap();
         let v1 = version_manager.push_memtable(Arc::new(vm)).unwrap();
         assert_eq!(
             v1.find(b"id3").unwrap(),
@@ -282,9 +405,21 @@ mod test {
         }
         let vm = Arc::new(vm);
         let (config, _dir) = DbConfig::get_test_config();
-        let mut version_manager = VersionManager::new(config).unwrap();
+        let (cleaner_channel_producer, _cleaner_channel_receiver) = std::sync::mpsc::channel();
+
+        let mut version_manager = VersionManager::new(config, cleaner_channel_producer).unwrap();
+
         let v1 = version_manager.push_memtable(vm.clone()).unwrap();
-        version_manager.push_l0_update(v1, vm.get_wal_offset());
+        let mut vu1 = VersionUpdate::new(0);
+        vu1.add_operation(
+            crate::database::sstable::version::version_update::VersionOperation::AddWithMeta {
+                level: 0,
+                meta: v1,
+                index: u32::MAX,
+            },
+        );
+        version_manager.push_version_update(vu1).unwrap();
+        // version_manager.push_l0_update(v1, vm.get_wal_offset());
         let entities2 = vec![
             Entry::Row {
                 key: b"id3",
@@ -301,7 +436,16 @@ mod test {
         }
         let vm2 = Arc::new(vm2);
         let v2 = version_manager.push_memtable(vm2.clone()).unwrap();
-        version_manager.push_l0_update(v2, vm2.get_wal_offset());
+        let mut vu2 = VersionUpdate::new(0);
+        vu2.add_operation(
+            crate::database::sstable::version::version_update::VersionOperation::AddWithMeta {
+                level: 0,
+                meta: v2,
+                index: u32::MAX,
+            },
+        );
+        version_manager.push_version_update(vu2).unwrap();
+        // version_manager.push_l0_update(v2, vm2.get_wal_offset());
         let version = version_manager.get_latest_version();
 
         assert_eq!(

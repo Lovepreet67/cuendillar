@@ -2,9 +2,11 @@ mod errors;
 #[cfg(test)]
 mod tests;
 use std::{
+    path::PathBuf,
     sync::{Arc, RwLock, atomic::AtomicBool},
     thread::{self, JoinHandle, sleep},
     time::Duration,
+    u32,
 };
 
 use crate::database::{
@@ -15,7 +17,10 @@ use crate::database::{
         compaction::build_compaction, memtable::build_memtable_manager, wal::build_wal_manger,
     },
     memtable::manager::MemtableManager,
-    sstable::{cleaner::Cleaner, version_manager::VersionManager},
+    sstable::{
+        cleaner::Cleaner,
+        version::{Version, version_manager::VersionManager, version_update::VersionUpdate},
+    },
     wal::WAL,
 };
 
@@ -61,24 +66,31 @@ impl Engine {
                     ready_to_push_memetable.clone(),
                 )
                 .map_err(|e| format!("SST generation failed: {:?}", e))?;
-
+                let mut version_update = VersionUpdate::new(ready_to_push_memetable.get_wal_offset());
+                version_update.add_operation(
+                    crate::database::sstable::version::version_update::VersionOperation::AddWithMeta 
+                    { level: 0, meta: sst_meta, index: u32::MAX }
+                );
+                
                 version_manager
                     .write()
                     .map_err(|e| format!("VersionManager lock poisoned: {:?}", e))?
-                    .push_l0_update(sst_meta, ready_to_push_memetable.get_wal_offset());
+                    .push_version_update( version_update)
+                    .map_err(|e| format!("Error while pushing the new version update: {:?}", e))?;
+                
 
                 wal_manager
                     .write()
                     .map_err(|e| format!("WALManager lock poisoned: {:?}", e))?
                     .flush_wal(ready_to_push_memetable.get_wal_offset())
                     .map_err(|e| format!("WAL flush failed: {:?}", e))?;
+                
 
                 memtable_manager
                     .write()
                     .map_err(|e| format!("MemtableManager lock poisoned: {:?}", e))?
                     .mark_pushed(ready_to_push_memetable.get_id().clone())
                     .map_err(|e| format!("Mark pushed failed: {:?}", e))?;
-
                 Ok(())
             })();
 
@@ -100,13 +112,16 @@ impl Engine {
         let wal_manager = build_wal_manger(&config.wal)?;
         // wal_manager.rotate(Some(uid))?;
         // version manager will handle its own recovery
-        let version_manager = Arc::new(RwLock::new(VersionManager::new(config.clone())?));
+         // now we know have both version manager and wal_manager now we will read the entries from wal manger and write it to engine
+        let (cleaner_channel_producer, cleaner_channel_receiver) = std::sync::mpsc::channel();
+
+        let version_manager = Arc::new(RwLock::new(VersionManager::new(config.clone(),cleaner_channel_producer)?));
         // here will come the recovery process
         // read the entries from the wal and push them to memtable without any sstable push
         //  at the end we have active memtable and and immutable memtables in the memetable manager
         // then we can start the engine to serve the queries
 
-        // now we know have both version manager and wal_manager now we will read the entries from wal manger and write it to engine
+       
         let mut engine = Self {
             config: config.clone(),
             wal_manager: Arc::new(RwLock::new(wal_manager)),
@@ -162,7 +177,7 @@ impl Engine {
 
         let clearner_config = config.cleaning.clone();
 
-        let cleaner = Cleaner::new(clearner_config, version_manager.clone(), under_shutdown);
+        let cleaner = Cleaner::new(clearner_config, under_shutdown, cleaner_channel_receiver);
         engine.workers.push(cleaner.init());
         drop(engine_memtable_manager);
         drop(engine_wal_manager);
