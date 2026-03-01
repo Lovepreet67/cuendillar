@@ -56,6 +56,7 @@ impl Cleaner {
                                 }
                             }
                         }
+                        version_up_for_removal.take();
                     }
                 }
                 sleep(Duration::from_millis(self.config.cleaning_interval as u64));

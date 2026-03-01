@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use tempfile::TempDir;
 
-use crate::database::config::config_error::ConfigError;
+use crate::database::config::{
+    config_error::ConfigError, version_manager_config::VersionMangerSyncVariant,
+};
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -12,24 +14,42 @@ pub enum WALVariant {
     Default,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WALSyncVariant {
+    NoSync,
+    GroupSync(u64),
+    Always,
+}
+
+impl From<VersionMangerSyncVariant> for WALSyncVariant {
+    fn from(value: VersionMangerSyncVariant) -> Self {
+        match value {
+            VersionMangerSyncVariant::Always => WALSyncVariant::Always,
+            VersionMangerSyncVariant::GroupSync(x) => WALSyncVariant::GroupSync(x),
+            VersionMangerSyncVariant::NoSync => WALSyncVariant::NoSync,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct WALConfig {
     pub wal_dir: PathBuf,
     pub variant: WALVariant,
-    pub wal_group_sync_size: u64,
     pub wal_file_size_in_bytes: u64,
     pub wal_max_payload_len_in_bytes: u64,
+    pub wal_sync_variant: WALSyncVariant,
 }
 
 impl WALConfig {
     pub fn validate(&self) -> Result<(), ConfigError> {
-        if self.wal_group_sync_size == 0 {
-            return Err(ConfigError::InvalidWALConfig(format!(
-                "wal_group_sync_size must be > 0, got {}",
-                self.wal_group_sync_size
-            )));
+        if let WALSyncVariant::GroupSync(x) = self.wal_sync_variant
+            && x == 0
+        {
+            eprintln!(
+                "Group size is set to 0 please use NoSync variant for better understandanbility"
+            )
         }
-
         if self.wal_max_payload_len_in_bytes == 0 {
             return Err(ConfigError::InvalidWALConfig(format!(
                 "wal_max_payload_len_in_bytes must be > 0, got {}",
@@ -52,9 +72,9 @@ impl WALConfig {
             WALConfig {
                 wal_dir: root_dir.path().into(),
                 variant: WALVariant::Default,
-                wal_group_sync_size: 1,
                 wal_file_size_in_bytes: 4 * 1024, // tiny for fast rotation
                 wal_max_payload_len_in_bytes: 512,
+                wal_sync_variant: WALSyncVariant::NoSync,
             },
             root_dir,
         )

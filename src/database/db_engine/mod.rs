@@ -1,6 +1,7 @@
 mod errors;
 #[cfg(test)]
 mod tests;
+pub mod instrumented;
 use std::{
     path::PathBuf,
     sync::{Arc, RwLock, atomic::AtomicBool},
@@ -12,7 +13,7 @@ use std::{
 use crate::database::{
     Entry, OwnedEntry,
     config::DbConfig,
-    db_engine::errors::EngineError,
+    db_engine::{errors::EngineError /*, instrumented::InstrumentedRwLock as RwLock*/},
     factory::{
         compaction::build_compaction, memtable::build_memtable_manager, wal::build_wal_manger,
     },
@@ -46,7 +47,9 @@ pub struct Engine {
 impl Engine {
     fn push_memetable(&mut self) -> Result<(), EngineError> {
         // we will fetch the immutable table from the memtable_manager
-        let ready_to_push_memetable = self.memtable_manager.read()?.get_memtable_to_push();
+        let ready_to_push_memetable = self.memtable_manager.read(
+            // "Getting ready to push memetable"
+            )?.get_memtable_to_push();
         if ready_to_push_memetable.is_none() {
             return Ok(());
         }
@@ -73,21 +76,27 @@ impl Engine {
                 );
                 
                 version_manager
-                    .write()
+                    .write(
+                        // "Version manager while pushing version update in push memtable"
+                    )
                     .map_err(|e| format!("VersionManager lock poisoned: {:?}", e))?
                     .push_version_update( version_update)
                     .map_err(|e| format!("Error while pushing the new version update: {:?}", e))?;
                 
 
                 wal_manager
-                    .write()
+                    .write(
+                        // "WAL manager in push memtable"
+                        )
                     .map_err(|e| format!("WALManager lock poisoned: {:?}", e))?
                     .flush_wal(ready_to_push_memetable.get_wal_offset())
                     .map_err(|e| format!("WAL flush failed: {:?}", e))?;
                 
 
                 memtable_manager
-                    .write()
+                    .write(
+                        // "memtable manager in push memtable"
+                    )
                     .map_err(|e| format!("MemtableManager lock poisoned: {:?}", e))?
                     .mark_pushed(ready_to_push_memetable.get_id().clone())
                     .map_err(|e| format!("Mark pushed failed: {:?}", e))?;
@@ -115,7 +124,9 @@ impl Engine {
          // now we know have both version manager and wal_manager now we will read the entries from wal manger and write it to engine
         let (cleaner_channel_producer, cleaner_channel_receiver) = std::sync::mpsc::channel();
 
-        let version_manager = Arc::new(RwLock::new(VersionManager::new(config.clone(),cleaner_channel_producer)?));
+        let version_manager = Arc::new(RwLock::new(
+            // "Verions manger", 
+            VersionManager::new(config.clone(),cleaner_channel_producer)?));
         // here will come the recovery process
         // read the entries from the wal and push them to memtable without any sstable push
         //  at the end we have active memtable and and immutable memtables in the memetable manager
@@ -124,8 +135,13 @@ impl Engine {
        
         let mut engine = Self {
             config: config.clone(),
-            wal_manager: Arc::new(RwLock::new(wal_manager)),
-            memtable_manager: Arc::new(RwLock::new(memetable_manager)),
+            wal_manager: Arc::new(RwLock::new(
+                // "WAL manger",
+                wal_manager
+                )),
+            memtable_manager: Arc::new(RwLock::new(
+                // "Memtable manger",
+                memetable_manager)),
             version_manager: version_manager.clone(),
             write_count: 0,
             metrics: Metrics::default(),
@@ -134,11 +150,17 @@ impl Engine {
             pushing_memtable: Arc::new(AtomicBool::new(false)),
         };
         let last_commited_offset = version_manager
-            .read()?
+            .read(
+                // "Getting last commited offset from version manger in new"
+                )?
             .get_latest_version()
             .get_commited_wal_offset();
-        let engine_wal_manager = engine.wal_manager.read()?;
-        let mut engine_memtable_manager = engine.memtable_manager.write()?;
+        let engine_wal_manager = engine.wal_manager.read(
+            // "During new engine"
+            )?;
+        let mut engine_memtable_manager = engine.memtable_manager.write(
+            // "During new engine"
+            )?;
         let entries = engine_wal_manager.read(last_commited_offset)?;
         for entry in entries {
             if let Ok((lsn, payload)) = entry {
@@ -185,7 +207,9 @@ impl Engine {
     }
     pub fn write(&mut self, e: Entry) -> Result<(), EngineError> {
         self.metrics.write_count += 1;
-        if self.memtable_manager.read()?.require_rotation() {
+        if self.memtable_manager.read(
+            // "Checking if the rotaion is required"
+        )?.require_rotation() {
             self.memtable_rotation()?;
             if !self
                 .pushing_memtable
@@ -199,17 +223,25 @@ impl Engine {
 
         let mut payload = Vec::new();
         e.encode(&mut payload)?;
-        let wal_offset = self.wal_manager.write()?.append_log(&payload)?;
-        self.memtable_manager.write()?.insert(e, wal_offset)?;
+        let wal_offset = self.wal_manager.write(
+            // "During write"
+            )?.append_log(&payload)?;
+        self.memtable_manager.write(
+            // "During Writing"
+            )?.insert(e, wal_offset)?;
         self.write_count += 1;
         Ok(())
     }
     pub fn find(&mut self, key: &[u8]) -> Result<Option<OwnedEntry>, EngineError> {
         self.metrics.memtable_hits += 1;
-        let result = self.memtable_manager.read()?.find(key)?.map(|x| x.into());
+        let result = self.memtable_manager.read(
+            // "During find"
+            )?.find(key)?.map(|x| x.into());
         if result.is_none() {
             self.metrics.sstable_hits += 1;
-            let version_manager = self.version_manager.read()?;
+            let version_manager = self.version_manager.read(
+                // "During find"
+                )?;
             let latest_version = version_manager.get_latest_version();
             drop(version_manager);
             let sstable_result = latest_version.find(key)?;
@@ -222,7 +254,9 @@ impl Engine {
     }
     pub fn memtable_rotation(&mut self) -> Result<(), EngineError> {
         let uid = uuid::Uuid::new_v4();
-        self.memtable_manager.write()?.rotate(uid)?;
+        self.memtable_manager.write(
+            // "During rotation"
+            )?.rotate(uid)?;
         Ok(())
     }
 }

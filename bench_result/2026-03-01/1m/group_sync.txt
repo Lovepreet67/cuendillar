@@ -1,0 +1,33 @@
+Using config "./configs/group_sync_config.toml"
+Workload: 1m
+Total Ops Completed: 1000000
+Runtime: 38.93 sec
+Throughput: 25686.21 ops/sec
+
+PUT:
+  count: 499605
+  avg: 51.68 µs
+  p50: 12 µs
+  p95: 26 µs
+  p99: 2245 µs
+  p999: 4307 µs
+  max: 14519 µs
+
+GET:
+  count: 400360
+  avg: 7.74 µs
+  p50: 7 µs
+  p95: 19 µs
+  p99: 29 µs
+  p999: 64 µs
+  max: 7135 µs
+
+DEL:
+  count: 100035
+  avg: 49.83 µs
+  p50: 11 µs
+  p95: 25 µs
+  p99: 133 µs
+  p999: 4291 µs
+  max: 9415 µs
+

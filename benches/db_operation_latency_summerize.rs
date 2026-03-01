@@ -100,6 +100,12 @@ impl Stats {
         } else {
             0.0
         };
+        writeln!(
+            file,
+            "Using config {:?}",
+            std::env::var("CONFIG_PATH").unwrap_or_else(|_| "./default_config.toml".to_owned())
+        )
+        .unwrap();
 
         writeln!(file, "Workload: {}", workload).unwrap();
         writeln!(file, "Total Ops Completed: {}", self.total_ops).unwrap();

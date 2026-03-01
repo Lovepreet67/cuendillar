@@ -41,7 +41,11 @@ impl VersionManager {
     ) -> Result<Self, SSTableError> {
         let sstable_root_dir = config.sstable_root_dir.clone();
         let mut wal_config = config.wal.clone();
-        wal_config.wal_group_sync_size = 0;
+        wal_config.wal_sync_variant = config
+            .version_manager
+            .version_manager_sync_mode
+            .clone()
+            .into();
         wal_config.wal_dir = sstable_root_dir.join("version");
         create_dir_all(&sstable_root_dir).unwrap();
         let version_wal = build_wal_manger(&wal_config)?;
@@ -303,9 +307,8 @@ impl VersionManager {
         let mut buff = vec![];
         update.encode(&mut buff)?;
         self.version_wal.append_log(&buff)?;
-        // in this we will
         let mut updated_version = (*self.version).clone();
-        let deleted_files = update
+        let deleted_files: Vec<_> = update
             .operations
             .iter()
             .filter(|op| matches!(op, VersionOperation::Del { level, id }))
@@ -322,12 +325,17 @@ impl VersionManager {
                 }
             })
             .collect();
+
         updated_version.apply_update(update)?;
+
         let old_version = std::mem::replace(&mut self.version, Arc::new(updated_version));
         // then we will push the delete files to cleaner channel
         // TODO: handle this result
-        self.cleaner_channel_producer
+        // if deleted_files.len() > 0 {
+        let _ = self
+            .cleaner_channel_producer
             .send((old_version, deleted_files));
+        // }
         Ok(())
     }
 }

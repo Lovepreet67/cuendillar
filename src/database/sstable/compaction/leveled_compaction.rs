@@ -11,10 +11,12 @@ use std::{
 use byteorder::{BigEndian, WriteBytesExt};
 
 use crate::database::{
-    Entry, OwnedEntry,
+    Entry,
+    OwnedEntry,
     config::{
         bloom_config::BloomConfig, compaction_config::CompactionConfig, index_config::IndexConfig,
     },
+    // db_engine::instrumented::InstrumentedRwLock as RwLock,
     sstable::{
         compaction::Compaction,
         errors::SSTableError,
@@ -263,7 +265,12 @@ impl LevelCompaction {
 
 impl Compaction for LevelCompaction {
     fn need_compaction(&self) -> bool {
-        let version_manager = self.version_manager.read().unwrap();
+        let version_manager = self
+            .version_manager
+            .read(
+                // "Checking if compaction is needed"
+            )
+            .unwrap();
         let version = version_manager.get_latest_version();
         match version.get_level_tables(0) {
             Some(tables) if tables.len() < self.config.min_l0_file_count as usize => false,
@@ -273,7 +280,12 @@ impl Compaction for LevelCompaction {
     }
     fn run_compaction(&self) -> Result<(), SSTableError> {
         // we will check for the l0 have table  greater than min files trigger
-        let version_manager = self.version_manager.read().unwrap();
+        let version_manager = self
+            .version_manager
+            .read(
+                // "reading latest version at commpaction start"
+            )
+            .unwrap();
         let version = version_manager.get_latest_version();
         drop(version_manager);
         let mut version = (*version).clone();
@@ -357,7 +369,9 @@ impl Compaction for LevelCompaction {
         }
         // following the above code the version will contain all the neccessary updates
         self.version_manager
-            .write()
+            .write(
+                // "Writing compaction update to the "
+            )
             .unwrap()
             .push_version_update(compaction_update)?;
         Ok(())
