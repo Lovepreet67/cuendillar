@@ -1,0 +1,46 @@
+# this config make sure that fsync call will be made after each write
+root_dir = "./table"
+sstable_root_dir = "./table/sstable"
+
+[wal]
+variant = "default"
+wal_dir = "./table/wal"
+wal_sync_variant = "always"
+wal_group_sync_size = 100
+wal_file_size_in_bytes = 200_00_00_0
+wal_max_payload_len_in_bytes = 1000_000 # 1 MB
+
+[memtable]
+variant = "btree"
+manager_variant = "default"
+max_memtable_size_in_mega_bytes = 10
+
+[sstable]
+variant = "default"
+
+[bloom]
+variant = "default"
+bits_per_key = 10
+
+[index]
+variant = "default"
+index_block_min_size = 4096
+
+
+[compaction]
+root_dir = "./table/sstable"
+compaction_interval = 100
+min_l0_file_count = 3
+variant = "leveled"
+base_entries_per_table = 100
+level_entries_growth_factor = 4
+level_size_growth_factor = 4
+level_base_size = 100_000
+max_level_count = 5
+
+[cleaning]
+root_dir = "./table/sstable"
+cleaning_interval = 100
+
+[version_manager]
+version_manager_sync_mode = "always"

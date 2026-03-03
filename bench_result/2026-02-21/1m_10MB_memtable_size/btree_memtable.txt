@@ -1,0 +1,35 @@
+Workload: 1m
+Total Ops Completed: 1000000
+Runtime: 36.82 sec
+Throughput: 27156.38 ops/sec
+
+// memtable size is 10 MB 
+
+
+PUT:
+  count: 499605
+  avg: 50.51 µs
+  p50: 11 µs
+  p95: 20 µs
+  p99: 1406 µs
+  p999: 4759 µs
+  max: 21295 µs
+
+GET:
+  count: 400360
+  avg: 4.93 µs
+  p50: 2 µs
+  p95: 12 µs
+  p99: 19 µs
+  p999: 152 µs
+  max: 13031 µs
+
+DEL:
+  count: 100035
+  avg: 47.55 µs
+  p50: 10 µs
+  p95: 18 µs
+  p99: 206 µs
+  p999: 4787 µs
+  max: 9671 µs
+

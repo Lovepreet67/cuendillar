@@ -1,6 +1,8 @@
 use crate::database::Entry;
 use crate::database::memtable::Memtable;
 
+mod btree_memtable_test;
+mod hash_memtable_test;
 mod vector_memtable_test;
 
 pub fn memtable_test_insert_and_find(memtable: &mut impl Memtable) {

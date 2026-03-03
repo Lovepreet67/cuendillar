@@ -5,3 +5,5 @@ testing_workload*
 workload_generator*
 test_result.txt
 table
+temp*
+output.txt

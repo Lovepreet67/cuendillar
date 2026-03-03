@@ -14,7 +14,7 @@ use tempfile::TempDir;
 use crate::database::config::{
     bloom_config::BloomConfig, cleaner_config::CleanerConfig, compaction_config::CompactionConfig,
     config_error::ConfigError, index_config::IndexConfig, memtable_config::MemtableConfig,
-    wal_config::WALConfig,
+    version_manager_config::VersionManagerConfig, wal_config::WALConfig,
 };
 
 use crate::database::config::{
@@ -31,6 +31,7 @@ pub mod compaction_config;
 pub mod config_error;
 pub mod index_config;
 pub mod memtable_config;
+pub mod version_manager_config;
 pub mod wal_config;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -43,6 +44,7 @@ pub struct DbConfig {
     pub index: IndexConfig,
     pub compaction: CompactionConfig,
     pub cleaning: CleanerConfig,
+    pub version_manager: VersionManagerConfig,
 }
 
 impl DbConfig {
@@ -53,19 +55,18 @@ impl DbConfig {
             wal: WALConfig {
                 wal_dir: root_dir.join("wal"),
                 variant: WALVariant::Default,
-                wal_group_sync_size: 1,
                 wal_file_size_in_bytes: 4 * 1024, // tiny for fast rotation
                 wal_max_payload_len_in_bytes: 512,
+                wal_sync_variant: wal_config::WALSyncVariant::NoSync,
             },
             memtable: MemtableConfig {
                 variant: MemtableVariant::Vector,
                 manager_variant: MemtableMangerVariant::Default,
-                max_memtable_size: 10,
+                max_memtable_size_in_mega_bytes: 64,
             },
             bloom: BloomConfig {
                 variant: BloomVariant::Default,
                 bits_per_key: 8,
-                size: 128,
             },
             index: IndexConfig {
                 variant: IndexVariant::Default,
@@ -86,6 +87,9 @@ impl DbConfig {
                 root_dir: sstable_root_dir.into(),
                 cleaning_interval: 1,
             },
+            version_manager: VersionManagerConfig {
+                version_manager_sync_mode: version_manager_config::VersionMangerSyncVariant::NoSync,
+            },
         }
     }
     pub fn validate(&self) -> Result<(), ConfigError> {
@@ -95,6 +99,7 @@ impl DbConfig {
         self.index.validate()?;
         self.memtable.validate()?;
         self.wal.validate()?;
+        self.version_manager.validate()?;
         // all compacter, version_manager, cleaner should be on the same dir
         if self.compaction.root_dir != self.cleaning.root_dir {
             return Err(ConfigError::ExtractionError(

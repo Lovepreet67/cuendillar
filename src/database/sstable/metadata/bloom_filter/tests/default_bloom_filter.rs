@@ -5,6 +5,6 @@ use crate::database::sstable::metadata::bloom_filter::{
 
 #[test]
 fn default_bloom_filter_test() {
-    let bf = DefaultBloomFilter::new(&&BloomConfig::get_test_config());
+    let bf = DefaultBloomFilter::new(&&BloomConfig::get_test_config(), 3);
     bloom_filter_test_insertion_and_check(bf);
 }

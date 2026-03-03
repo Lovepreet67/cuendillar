@@ -1,0 +1,32 @@
+Workload: 1m
+Total Ops: 1000000
+Runtime: 80.13 sec
+Throughput: 12480.29 ops/sec
+
+PUT:
+  count: 499605
+  avg: 77.93 µs
+  p50: 4 µs
+  p95: 21 µs
+  p99: 3439 µs
+  p999: 14671 µs
+  max: 69247 µs
+
+GET:
+  count: 400360
+  avg: 82.59 µs
+  p50: 73 µs
+  p95: 173 µs
+  p99: 320 µs
+  p999: 1435 µs
+  max: 45535 µs
+
+DEL:
+  count: 100035
+  avg: 72.86 µs
+  p50: 4 µs
+  p95: 7 µs
+  p99: 3337 µs
+  p999: 14863 µs
+  max: 49343 µs
+

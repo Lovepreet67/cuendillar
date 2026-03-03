@@ -129,10 +129,20 @@ impl DefaultWAL {
             .append(true)
             .open(new_log_file_path)?;
         if let Some(active_log) = self.active_log.take() {
-            active_log.sync_all()?;
+            if !matches!(
+                self.config.wal_sync_variant,
+                crate::database::config::wal_config::WALSyncVariant::NoSync
+            ) {
+                active_log.sync_data()?;
+            }
             drop(active_log);
         }
-        new_log_file.sync_all()?;
+        if !matches!(
+            self.config.wal_sync_variant,
+            crate::database::config::wal_config::WALSyncVariant::NoSync
+        ) {
+            new_log_file.sync_data()?;
+        }
         self.active_log = Some(new_log_file);
         self.last_rotation_offset = self.curr_offset;
         Ok(())
@@ -187,10 +197,18 @@ impl WAL for DefaultWAL {
         let active_log = self.active_log.as_mut().unwrap();
         active_log.write_all(&local_buff)?;
         self.curr_offset += local_buff.len() as u64;
-        self.counter += 1;
-        if self.counter >= self.config.wal_group_sync_size {
-            self.counter = 0;
-            active_log.sync_all()?;
+        match self.config.wal_sync_variant {
+            crate::database::config::wal_config::WALSyncVariant::NoSync => {}
+            crate::database::config::wal_config::WALSyncVariant::Always => {
+                active_log.sync_data()?;
+            }
+            crate::database::config::wal_config::WALSyncVariant::GroupSync(group_size) => {
+                self.counter += 1;
+                if self.counter >= group_size {
+                    self.counter = 0;
+                    active_log.sync_data()?;
+                }
+            }
         }
         Ok(self.curr_offset)
     }

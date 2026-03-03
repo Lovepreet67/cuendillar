@@ -13,9 +13,9 @@ use crate::database::{
 pub struct BloomFactory;
 
 impl BloomFactory {
-    pub fn build_bloom_filter(bloom_config: &BloomConfig) -> Box<dyn BloomFilter> {
+    pub fn build_bloom_filter(bloom_config: &BloomConfig, table_size: u64) -> Box<dyn BloomFilter> {
         match bloom_config.variant {
-            BloomVariant::Default => Box::new(DefaultBloomFilter::new(bloom_config)),
+            BloomVariant::Default => Box::new(DefaultBloomFilter::new(bloom_config, table_size)),
         }
     }
     pub fn deserialize_bloom_filter(

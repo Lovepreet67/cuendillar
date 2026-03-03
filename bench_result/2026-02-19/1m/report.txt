@@ -1,0 +1,36 @@
+Workload: 1m
+Total Ops Completed: 1000000
+Runtime: 44.33 sec
+Throughput: 22558.96 ops/sec
+
+// changes we made 
+1. updated the bloom filter to choose dynamic size instead of hardcoding based on the size of sstable it is for
+2. changed the default config for engine to use for updated versions
+
+PUT:
+  count: 499605
+  avg: 48.85 µs
+  p50: 5 µs
+  p95: 21 µs
+  p99: 2051 µs
+  p999: 4691 µs
+  max: 53407 µs
+
+GET:
+  count: 400360
+  avg: 27.20 µs
+  p50: 26 µs
+  p95: 40 µs
+  p99: 56 µs
+  p999: 923 µs
+  max: 22783 µs
+
+DEL:
+  count: 100035
+  avg: 44.72 µs
+  p50: 5 µs
+  p95: 9 µs
+  p99: 723 µs
+  p999: 4675 µs
+  max: 40511 µs
+
