@@ -10,6 +10,7 @@ use figment::{
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use tempfile::TempDir;
+use tracing::info;
 
 use crate::database::config::{
     bloom_config::BloomConfig, cleaner_config::CleanerConfig, compaction_config::CompactionConfig,
@@ -111,7 +112,7 @@ impl DbConfig {
     pub fn get_config() -> Result<Arc<DbConfig>, ConfigError> {
         let config_file_path =
             std::env::var("CONFIG_PATH").unwrap_or_else(|_| "./default_config.toml".to_owned());
-        println!("Reading config from {:?}", config_file_path);
+        info!("Reading config from {:?}", config_file_path);
         // first we will generate the root_dir to get the default configs for some parts
         let partial_figment = Figment::new().merge(Toml::file(&config_file_path));
         // now we will get the root_dir and generate the default configs from it

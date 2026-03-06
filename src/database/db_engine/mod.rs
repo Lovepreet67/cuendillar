@@ -3,12 +3,13 @@ mod errors;
 mod tests;
 pub mod instrumented;
 use std::{
-    path::PathBuf,
     sync::{Arc, RwLock, atomic::AtomicBool},
     thread::{self, JoinHandle, sleep},
     time::Duration,
     u32,
 };
+
+use tracing::{error, info, instrument};
 
 use crate::database::{
     Entry, OwnedEntry,
@@ -20,17 +21,10 @@ use crate::database::{
     memtable::manager::MemtableManager,
     sstable::{
         cleaner::Cleaner,
-        version::{Version, version_manager::VersionManager, version_update::VersionUpdate},
+        version::{ version_manager::VersionManager, version_update::VersionUpdate},
     },
     wal::WAL,
 };
-
-#[derive(Default, Clone, Copy, Debug)]
-pub struct Metrics {
-    sstable_hits: u64,
-    memtable_hits: u64,
-    write_count: u64,
-}
 
 pub struct Engine {
     config: Arc<DbConfig>,
@@ -38,13 +32,13 @@ pub struct Engine {
     memtable_manager: Arc<RwLock<Box<dyn MemtableManager>>>,
     version_manager: Arc<RwLock<VersionManager>>,
     write_count: u64,
-    pub metrics: Metrics,
     workers: Vec<JoinHandle<u64>>,
     under_shutdown: Arc<AtomicBool>,
     pushing_memtable: Arc<AtomicBool>,
 }
 
 impl Engine {
+    #[instrument(name="Engine Push Memtable",skip(self))]
     fn push_memetable(&mut self) -> Result<(), EngineError> {
         // we will fetch the immutable table from the memtable_manager
         let ready_to_push_memetable = self.memtable_manager.read(
@@ -104,7 +98,7 @@ impl Engine {
             })();
 
             if let Err(err) = result {
-                eprintln!("Background memtable push failed: {}", err);
+                error!("Background memtable push failed: {}", err);
             }
 
             pushing_memtable.store(false, std::sync::atomic::Ordering::Release);
@@ -114,6 +108,7 @@ impl Engine {
         self.workers.push(handler);
         return Ok(());
     }
+    #[instrument(name="Engine New",skip(config))]
     pub fn new(config: Arc<DbConfig>) -> Result<Self, EngineError> {
         let uid = uuid::Uuid::new_v4();
         let memetable_manager = build_memtable_manager(&config.memtable, Some(uid))?;
@@ -144,7 +139,6 @@ impl Engine {
                 memetable_manager)),
             version_manager: version_manager.clone(),
             write_count: 0,
-            metrics: Metrics::default(),
             workers: Vec::default(),
             under_shutdown: Arc::new(AtomicBool::new(false)),
             pushing_memtable: Arc::new(AtomicBool::new(false)),
@@ -155,6 +149,7 @@ impl Engine {
                 )?
             .get_latest_version()
             .get_commited_wal_offset();
+        info!("Last Committed WAL offset {}",last_commited_offset);
         let engine_wal_manager = engine.wal_manager.read(
             // "During new engine"
             )?;
@@ -170,6 +165,7 @@ impl Engine {
                 panic!("Error while reading the wal")
             }
         }
+        info!("Successfully Replayed the WAL and inserted data in memetable");
 
         let compaction = build_compaction(
             &config.compaction,
@@ -189,7 +185,7 @@ impl Engine {
                     match compaction.run_compaction() {
                         Ok(_) => {}
                         Err(e) => {
-                            eprintln!("Error happen during the compaction {:?}", e)
+                            error!("Error happen during the compaction {:?}", e)
                         }
                     }
                 }
@@ -205,8 +201,8 @@ impl Engine {
         drop(engine_wal_manager);
         Ok(engine)
     }
+    #[instrument(name="Engine Write",skip(self))]
     pub fn write(&mut self, e: Entry) -> Result<(), EngineError> {
-        self.metrics.write_count += 1;
         if self.memtable_manager.read(
             // "Checking if the rotaion is required"
         )?.require_rotation() {
@@ -232,18 +228,15 @@ impl Engine {
         self.write_count += 1;
         Ok(())
     }
+    #[instrument(name="Engine Find",skip(self))]
     pub fn find(&mut self, key: &[u8]) -> Result<Option<OwnedEntry>, EngineError> {
-        self.metrics.memtable_hits += 1;
         let result = self.memtable_manager.read(
             // "During find"
             )?.find(key)?.map(|x| x.into());
         if result.is_none() {
-            self.metrics.sstable_hits += 1;
-            let version_manager = self.version_manager.read(
+            let latest_version = self.version_manager.read(
                 // "During find"
-                )?;
-            let latest_version = version_manager.get_latest_version();
-            drop(version_manager);
+                )?.get_latest_version();
             let sstable_result = latest_version.find(key)?;
             return Ok(sstable_result);
         }
@@ -262,9 +255,12 @@ impl Engine {
 }
 
 impl Drop for Engine {
+    #[instrument(name="Engine Stop",skip(self))]
     fn drop(&mut self) {
+        info!("Stoping Engine....");
         self.under_shutdown
             .store(true, std::sync::atomic::Ordering::Relaxed);
+        info!("Waiting for Components to stop...");
         while let Some(worker) = self.workers.pop() {
             worker.join().unwrap();
         }

@@ -192,7 +192,13 @@ fn seed_base(flag_seed: u64) -> u64 {
         .as_micros() as u64
 }
 
-fn run_fillrandom(engine: &mut Engine, num: u64, key_size: usize, value_size: usize, seed: u64) -> PhaseResult {
+fn run_fillrandom(
+    engine: &mut Engine,
+    num: u64,
+    key_size: usize,
+    value_size: usize,
+    seed: u64,
+) -> PhaseResult {
     let mut rng = Mt19937_64::new(seed);
     let mut key_buf = vec![0u8; key_size];
     let value = vec![b'v'; value_size];
@@ -222,7 +228,13 @@ fn run_fillrandom(engine: &mut Engine, num: u64, key_size: usize, value_size: us
     }
 }
 
-fn run_readrandom(engine: &mut Engine, reads: u64, key_space: u64, key_size: usize, seed: u64) -> PhaseResult {
+fn run_readrandom(
+    engine: &mut Engine,
+    reads: u64,
+    key_space: u64,
+    key_size: usize,
+    seed: u64,
+) -> PhaseResult {
     let mut rng = Mt19937_64::new(seed);
     let mut key_buf = vec![0u8; key_size];
     let mut found = 0u64;
@@ -233,7 +245,11 @@ fn run_readrandom(engine: &mut Engine, reads: u64, key_space: u64, key_size: usi
         let key_rand = rng.next_u64() % key_space;
         generate_key_from_int(key_rand, &mut key_buf);
         let op_started = Instant::now();
-        if engine.find(&key_buf).expect("readrandom find failed").is_some() {
+        if engine
+            .find(&key_buf)
+            .expect("readrandom find failed")
+            .is_some()
+        {
             found += 1;
         }
         let micros = op_started.elapsed().as_micros() as u64;
@@ -279,6 +295,9 @@ fn print_phase(result: &PhaseResult) {
 }
 
 fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter("debug")
+        .try_init();
     let opts = match Opts::parse() {
         Ok(v) => v,
         Err(e) => {
@@ -309,7 +328,8 @@ fn main() {
     for benchmark in &opts.benchmarks {
         match benchmark.as_str() {
             "fillrandom" => {
-                let result = run_fillrandom(&mut engine, opts.num, opts.key_size, opts.value_size, seed);
+                let result =
+                    run_fillrandom(&mut engine, opts.num, opts.key_size, opts.value_size, seed);
                 print_phase(&result);
             }
             "readrandom" => {

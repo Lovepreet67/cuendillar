@@ -10,6 +10,7 @@ murmur3 = "0.5.2"
 figment = { version = "0.10.19", features = ["toml"] }
 serde = { version = "1.0.228", features = ["derive"] }
 crc = "3.4.0"
+tracing = "0.1.41"
 
 [dev-dependencies]
 criterion = "0.8.1"
@@ -17,7 +18,7 @@ tempfile = "3.24.0"
 hdrhistogram = "7.5.4"
 plotters = "0.3.7"
 chrono = "0.4.42"
-
+tracing-subscriber = { version = "0.3.19", features = ["env-filter", "json"] }
 
 [[bench]]
 name = "db_workload_operation"

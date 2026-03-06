@@ -7,6 +7,7 @@ use std::{
 };
 
 use byteorder::{BigEndian, WriteBytesExt};
+use tracing::{info, instrument};
 
 use crate::database::{
     config::{DbConfig, bloom_config::BloomConfig, index_config::IndexConfig},
@@ -35,10 +36,12 @@ pub struct VersionManager {
 }
 
 impl VersionManager {
+    #[instrument(name = "Verion Manger New", skip(config, cleaner_channel_producer))]
     pub fn new(
         config: Arc<DbConfig>,
         cleaner_channel_producer: std::sync::mpsc::Sender<(Arc<Version>, Vec<PathBuf>)>,
     ) -> Result<Self, SSTableError> {
+        info!("Creating new Version Manager");
         let sstable_root_dir = config.sstable_root_dir.clone();
         let mut wal_config = config.wal.clone();
         wal_config.wal_sync_variant = config
@@ -54,6 +57,7 @@ impl VersionManager {
         let version_iterator = version_wal.read(0)?;
         let mut version_update_operations = vec![];
         let mut last_commited_offset = 0;
+        info!("Reading the Version WAL");
         for version_update_encoded in version_iterator {
             if let Ok((_, update_bytes)) = version_update_encoded {
                 let mut version_update = VersionUpdate::decode(&mut update_bytes.as_slice())?;
@@ -65,6 +69,11 @@ impl VersionManager {
                 ));
             }
         }
+        info!(
+            "Read Version WAL found {} total version operations, and last committed offset {}",
+            version_update_operations.len(),
+            last_commited_offset
+        );
 
         // we will keep only the add operations and remove the del operation
         // we will travarse the list from right to left and remove all updates which are deleted in future
@@ -104,6 +113,10 @@ impl VersionManager {
             })
             .rev()
             .collect();
+        info!(
+            "{} Effective operations Filtered",
+            version_update.operations.len()
+        );
         // then we will normalize this version
         Version::normalize_version_update_operation(&mut version_update, &sstable_root_dir)?;
         version.apply_update(version_update)?;
@@ -311,7 +324,15 @@ impl VersionManager {
         let deleted_files: Vec<_> = update
             .operations
             .iter()
-            .filter(|op| matches!(op, VersionOperation::Del { level, id }))
+            .filter(|op| {
+                matches!(
+                    op,
+                    VersionOperation::Del {
+                        level: _level,
+                        id: _id
+                    }
+                )
+            })
             .map(|op| {
                 match op {
                     VersionOperation::Del { level, id } => self

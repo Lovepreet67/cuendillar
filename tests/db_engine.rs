@@ -1,6 +1,6 @@
 use std::{
     fs::{File, remove_dir_all},
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader},
     thread::sleep,
     time::Duration,
 };
@@ -64,6 +64,10 @@ pub fn execute_op(engine: &mut Engine, op: Operation) {
 }
 #[test]
 pub fn db_engine_test() {
+    tracing_subscriber::fmt()
+        .with_env_filter("debug")
+        .try_init()
+        .unwrap();
     // let dir = TempDir::new().unwrap();
     // let mut engine = Engine::new(Some(dir.path().into())).unwrap();
     let config = DbConfig::get_config().unwrap();
@@ -78,13 +82,6 @@ pub fn db_engine_test() {
     let active_workload_file = format!("workload/{}.txt", active_workload);
     println!("Active workload is set to {}", active_workload);
     run_workload(&mut engine, &active_workload_file);
-    let metrics = engine.metrics;
-    let mut output_file = File::options()
-        .create(true)
-        .write(true)
-        .open("./test_result.txt")
-        .unwrap();
-    writeln!(output_file, "{:?}", metrics).unwrap();
     drop(engine);
     remove_dir_all(&config.root_dir).unwrap();
     sleep(Duration::from_secs(10)); // giving time to remove all dir
@@ -92,6 +89,10 @@ pub fn db_engine_test() {
 
 #[test]
 pub fn db_engine_controlled_recovery_test() {
+    tracing_subscriber::fmt()
+        .with_env_filter("debug")
+        .try_init()
+        .unwrap();
     // let dir = TempDir::new().unwrap();
     // let mut engine = Engine::new(Some(dir.path().into())).unwrap();
     let config = DbConfig::get_config().unwrap();

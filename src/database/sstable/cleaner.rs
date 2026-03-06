@@ -6,6 +6,8 @@ use std::{
     time::Duration,
 };
 
+use tracing::{error, info};
+
 use crate::database::{config::cleaner_config::CleanerConfig, sstable::version::Version};
 
 pub struct Cleaner {
@@ -48,15 +50,20 @@ impl Cleaner {
                 if let Some((version, files)) = &version_up_for_removal {
                     // we will check if this is last copy of verion i.e nobody is using this version than we can remove the files
                     if Arc::strong_count(version) == 1 {
+                        info!(
+                            "Cleaner Droping version total {} files will be deleted",
+                            files.len()
+                        );
                         for file in files {
                             match fs::remove_file(file) {
                                 Ok(_) => {}
                                 Err(e) => {
-                                    eprintln!("Error while deleting the file {:?}", e)
+                                    error!("Error while deleting the file {:?}", e)
                                 }
                             }
                         }
                         version_up_for_removal.take();
+                        info!("Cleaner droped version");
                     }
                 }
                 sleep(Duration::from_millis(self.config.cleaning_interval as u64));

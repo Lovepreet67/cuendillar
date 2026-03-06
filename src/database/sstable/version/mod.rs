@@ -7,6 +7,7 @@ use std::{
 };
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use tracing::instrument;
 
 use crate::database::{
     OwnedEntry,
@@ -75,6 +76,7 @@ impl Version {
             Some(std::mem::take(&mut self.levels[level]))
         }
     }
+    #[instrument(name = "Version Find", skip(self))]
     pub fn find(&self, key: &[u8]) -> Result<Option<OwnedEntry>, SSTableError> {
         if self.poisened {
             return Err(SSTableError::PoisonedError);
@@ -131,6 +133,7 @@ impl Version {
         Ok(None)
     }
 
+    #[instrument(name = "Apply version Update", skip(self, normalized_update))]
     pub fn apply_update(&mut self, normalized_update: VersionUpdate) -> Result<(), SSTableError> {
         use std::collections::HashMap;
 
@@ -216,6 +219,7 @@ impl Version {
         Ok(bytes_written)
     }
     // this function will convert all the add to add with sstmetadata
+    #[instrument(name = "Normalize Version Update Operation", skip(update, root_dir))]
     pub fn normalize_version_update_operation(
         update: &mut VersionUpdate,
         root_dir: &Path,
@@ -326,7 +330,7 @@ impl Version {
 #[cfg(test)]
 mod test {
 
-    use std::{sync::Arc, thread::sleep, time::Duration};
+    use std::sync::Arc;
 
     use crate::database::{
         Entry,

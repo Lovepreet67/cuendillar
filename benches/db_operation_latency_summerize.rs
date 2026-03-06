@@ -1,5 +1,6 @@
 use cuendillar::database::{config::DbConfig, db_engine::Engine};
 use hdrhistogram::Histogram;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use std::{
     fs::{File, create_dir_all, remove_dir_all},
@@ -250,6 +251,10 @@ pub fn run(workload: &str, file: &str) {
 }
 
 fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter("debug")
+        .try_init()
+        .unwrap();
     let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "10k".to_owned());
 
     let active_workload_file = format!("workload/{}.txt", active_workload);

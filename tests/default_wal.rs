@@ -97,6 +97,10 @@ pub fn verify_wal(wal: Box<dyn WAL>, path: &str) {
 
 #[test]
 pub fn default_wal_test() {
+    tracing_subscriber::fmt()
+        .with_env_filter("debug")
+        .try_init()
+        .unwrap();
     let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "10k".to_owned());
     let active_workload_file = format!("workload/{}.txt", active_workload);
     println!("Active workload is set to {}", active_workload);

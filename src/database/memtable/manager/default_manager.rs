@@ -1,5 +1,7 @@
 use std::{collections::VecDeque, sync::Arc};
 
+use tracing::instrument;
+
 use crate::database::memtable::{Memtable, errors::MemtableError, manager::MemtableManager};
 
 pub struct DefaultManger {
@@ -26,6 +28,7 @@ impl DefaultManger {
 }
 
 impl MemtableManager for DefaultManger {
+    #[instrument(name = "Default Memetable Manger Find", skip(self))]
     fn find(
         &self,
         key: &[u8],
@@ -42,6 +45,7 @@ impl MemtableManager for DefaultManger {
         }
         return Ok(None);
     }
+    #[instrument(name = "Default Memetable  Manger insert", skip(self))]
     fn insert(
         &mut self,
         e: crate::database::Entry<'_>,

@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, btree_map::Iter};
 
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::database::{
@@ -41,6 +42,7 @@ impl Memtable for BTreeMemtable {
     fn get_wal_offset(&self) -> u64 {
         self.wal_offset
     }
+    #[instrument(name = "BTree Memetable Find", skip(self))]
     fn find(
         &self,
         key: &[u8],
@@ -49,6 +51,7 @@ impl Memtable for BTreeMemtable {
             self.store.get_key_value(key),
         ))
     }
+    #[instrument(name = "BTree Memetable Insert", skip(self))]
     fn insert(&mut self, e: crate::database::Entry, wal_offset: u64) {
         self.wal_offset = wal_offset;
         match e {
@@ -63,6 +66,7 @@ impl Memtable for BTreeMemtable {
             }
         };
     }
+    #[instrument(name = "BTree Memetable Iter", skip(self))]
     fn iter(&self) -> Box<dyn super::MemtableIterator<Item = crate::database::Entry<'_>> + '_> {
         let first_entry = Self::get_entry_from_btree_entry(self.store.first_key_value());
         let last_entry = Self::get_entry_from_btree_entry(self.store.last_key_value());
