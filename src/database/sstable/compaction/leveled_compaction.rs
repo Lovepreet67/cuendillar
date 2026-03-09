@@ -371,10 +371,20 @@ impl Compaction for LevelCompaction {
             // we will pop the last 2 enteries if there are and use them as a new version list
             // and skip the last level as  we can't compact it to next level
             if i < self.config.max_level_count - 1 {
-                merged_enteries = new_li_meta.pop().unwrap().item_list()?;
+                let poped_table = new_li_meta.pop().unwrap();
+                compaction_update.add_operation(Del {
+                    level: i as u32,
+                    id: poped_table.id,
+                });
+                merged_enteries = poped_table.item_list()?;
                 let mut tables_to_be_poped = max(6 - i, 2);
                 while !new_li_meta.is_empty() && tables_to_be_poped > 0 {
-                    let mut updated_vec = new_li_meta.pop().unwrap().item_list()?;
+                    let poped_table = new_li_meta.pop().unwrap();
+                    compaction_update.add_operation(Del {
+                        level: i as u32,
+                        id: poped_table.id,
+                    });
+                    let mut updated_vec = poped_table.item_list()?;
                     updated_vec.extend(merged_enteries);
                     merged_enteries = updated_vec;
                     tables_to_be_poped -= 1;
@@ -385,6 +395,7 @@ impl Compaction for LevelCompaction {
             }
         }
         // following the above code the version will contain all the neccessary updates
+        Version::normalize_version_update_operation(&mut compaction_update, &self.config.root_dir)?;
         self.version_manager
             .write(
                 // "Writing compaction update to the "

@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     fmt::Debug,
     fs::File,
     io::{Read, Seek, Write},
@@ -224,6 +225,44 @@ impl Version {
         update: &mut VersionUpdate,
         root_dir: &Path,
     ) -> Result<(), SSTableError> {
+        // first we will remove all the tables which are added first in the changelog and then deleted to pervent uneccessary operatons
+        let mut removed_tables = HashSet::new();
+        let original_updates = std::mem::take(&mut update.operations);
+        update.operations = original_updates
+            .into_iter()
+            .rev()
+            .filter(|operation| match operation {
+                VersionOperation::Del { level: _, id } => {
+                    removed_tables.insert(id.clone());
+                    return false;
+                }
+                VersionOperation::Add {
+                    level: _,
+                    id,
+                    index: _,
+                } => {
+                    if removed_tables.contains(id) {
+                        return false;
+                    } else {
+                        return true;
+                    }
+                }
+                // below case will not happen
+                VersionOperation::AddWithMeta {
+                    level: _,
+                    meta,
+                    index: _,
+                } => {
+                    if removed_tables.contains(&meta.id) {
+                        return false;
+                    } else {
+                        return true;
+                    }
+                }
+            })
+            .rev()
+            .collect();
+
         for op in &mut update.operations {
             // We only transform Add → AddWithMeta
             let new_op = match op {

@@ -1,5 +1,4 @@
 use std::{
-    collections::HashSet,
     fs::{File, create_dir_all},
     io::Write,
     path::{Path, PathBuf},
@@ -69,54 +68,14 @@ impl VersionManager {
                 ));
             }
         }
+        let mut version_update = VersionUpdate::new(last_commited_offset);
+        version_update.operations = version_update_operations;
         info!(
             "Read Version WAL found {} total version operations, and last committed offset {}",
-            version_update_operations.len(),
+            version_update.operations.len(),
             last_commited_offset
         );
 
-        // we will keep only the add operations and remove the del operation
-        // we will travarse the list from right to left and remove all updates which are deleted in future
-        let mut removed_tables = HashSet::new();
-        let mut version_update = VersionUpdate::new(last_commited_offset);
-        version_update.operations = version_update_operations
-            .into_iter()
-            .rev()
-            .filter(|operation| match operation {
-                VersionOperation::Del { level: _, id } => {
-                    removed_tables.insert(id.clone());
-                    return false;
-                }
-                VersionOperation::Add {
-                    level: _,
-                    id,
-                    index: _,
-                } => {
-                    if removed_tables.contains(id) {
-                        return false;
-                    } else {
-                        return true;
-                    }
-                }
-                // below case will not happen
-                VersionOperation::AddWithMeta {
-                    level: _,
-                    meta,
-                    index: _,
-                } => {
-                    if removed_tables.contains(&meta.id) {
-                        return false;
-                    } else {
-                        return true;
-                    }
-                }
-            })
-            .rev()
-            .collect();
-        info!(
-            "{} Effective operations Filtered",
-            version_update.operations.len()
-        );
         // then we will normalize this version
         Version::normalize_version_update_operation(&mut version_update, &sstable_root_dir)?;
         version.apply_update(version_update)?;
@@ -131,6 +90,12 @@ impl VersionManager {
         })
     }
     pub fn get_latest_version(&self) -> Arc<Version> {
+        // let mut file = File::options()
+        //     .create(true)
+        //     .append(true)
+        //     .open("version_log.txt")
+        //     .unwrap();
+        // writeln!(file, " version {:?}", self.version);
         self.version.clone()
     }
     // This function will return the sstatble meta which are clear to be droped

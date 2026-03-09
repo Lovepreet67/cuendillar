@@ -6,6 +6,7 @@ use std::{
 };
 
 use cuendillar::database::{OwnedEntry, config::DbConfig, db_engine::Engine};
+use tracing::info;
 #[derive(Debug)]
 pub enum Operation {
     Get(Vec<u8>, bool, Vec<u8>),
@@ -114,7 +115,9 @@ pub fn db_engine_controlled_recovery_test() {
         if counter % 99999 == 0 {
             // we will delte the engine
             drop(engine);
+            info!("Starting recovery");
             engine = Some(Engine::new(config.clone()).unwrap());
+            info!("recovery complete");
         }
         let op = get_operation(&line.unwrap());
         execute_op(engine.as_mut().unwrap(), op);
