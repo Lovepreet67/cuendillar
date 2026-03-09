@@ -65,10 +65,10 @@ pub fn execute_op(engine: &mut Engine, op: Operation) {
 }
 #[test]
 pub fn db_engine_test() {
-    tracing_subscriber::fmt()
-        .with_env_filter("debug")
-        .try_init()
-        .unwrap();
+    // tracing_subscriber::fmt()
+    //     .with_env_filter("debug")
+    //     .try_init()
+    //     .unwrap();
     // let dir = TempDir::new().unwrap();
     // let mut engine = Engine::new(Some(dir.path().into())).unwrap();
     let config = DbConfig::get_config().unwrap();
@@ -90,10 +90,10 @@ pub fn db_engine_test() {
 
 #[test]
 pub fn db_engine_controlled_recovery_test() {
-    tracing_subscriber::fmt()
-        .with_env_filter("debug")
-        .try_init()
-        .unwrap();
+    // tracing_subscriber::fmt()
+    //     .with_env_filter("debug")
+    //     .try_init()
+    //     .unwrap();
     // let dir = TempDir::new().unwrap();
     // let mut engine = Engine::new(Some(dir.path().into())).unwrap();
     let config = DbConfig::get_config().unwrap();
