@@ -2,6 +2,8 @@ use std::ops::{Deref, DerefMut};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::Instant;
 
+use tracing::info;
+
 use crate::database::db_engine::errors::EngineError;
 
 pub struct InstrumentedRwLock<T> {
@@ -27,7 +29,7 @@ impl<T> InstrumentedRwLock<T> {
             "Normal"
         };
 
-        println!(
+        info!(
             "[LOCK ACQUIRED] {} name={} type=READ wait={:?}, {}",
             tag, self.name, waited, message
         );
@@ -49,7 +51,7 @@ impl<T> InstrumentedRwLock<T> {
             "Normal"
         };
 
-        println!(
+        info!(
             "[LOCK ACQUIRED] {} name={} type=WRITE wait={:?}, {}",
             tag, self.name, waited, message
         );
@@ -83,7 +85,7 @@ impl<'a, T> Drop for InstrumentedReadGuard<'a, T> {
         } else {
             "Normal"
         };
-        println!(
+        info!(
             "[LOCK RELEASED] {} name={} type=READ held={:?}",
             tag, self.name, held
         );

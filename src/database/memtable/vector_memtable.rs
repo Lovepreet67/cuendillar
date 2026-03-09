@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::database::{
@@ -73,12 +74,14 @@ impl Memtable for VectorMemtable {
     fn get_id(&self) -> &Uuid {
         &self.id
     }
+    #[instrument(name = "Vector Memetable Insert", skip(self))]
     fn insert(&mut self, e: Entry, wal_offset: u64) {
         self.wal_offset = wal_offset;
         let memtable_entry: VectorMemtableEntry = e.into();
         self.curr_size += memtable_entry.size() as u64;
         self.store.push(memtable_entry);
     }
+    #[instrument(name = "Vector Memetable Find", skip(self))]
     fn find(&self, key: &[u8]) -> Result<Option<Entry<'_>>, MemtableError> {
         for element in self.store.iter().rev() {
             if element.get_key() == key {
@@ -87,6 +90,7 @@ impl Memtable for VectorMemtable {
         }
         return Ok(None);
     }
+    #[instrument(name = "Vector Memetable Iter", skip(self))]
     fn iter(&self) -> Box<dyn MemtableIterator<Item = Entry<'_>> + '_> {
         // we will store a copy of enteries in sorted order
         let mut seen = HashSet::new();

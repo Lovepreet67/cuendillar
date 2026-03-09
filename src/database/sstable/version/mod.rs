@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     fmt::Debug,
     fs::File,
     io::{Read, Seek, Write},
@@ -7,6 +8,7 @@ use std::{
 };
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use tracing::instrument;
 
 use crate::database::{
     OwnedEntry,
@@ -75,6 +77,7 @@ impl Version {
             Some(std::mem::take(&mut self.levels[level]))
         }
     }
+    #[instrument(name = "Version Find", skip(self))]
     pub fn find(&self, key: &[u8]) -> Result<Option<OwnedEntry>, SSTableError> {
         if self.poisened {
             return Err(SSTableError::PoisonedError);
@@ -131,6 +134,7 @@ impl Version {
         Ok(None)
     }
 
+    #[instrument(name = "Apply version Update", skip(self, normalized_update))]
     pub fn apply_update(&mut self, normalized_update: VersionUpdate) -> Result<(), SSTableError> {
         use std::collections::HashMap;
 
@@ -216,10 +220,49 @@ impl Version {
         Ok(bytes_written)
     }
     // this function will convert all the add to add with sstmetadata
+    #[instrument(name = "Normalize Version Update Operation", skip(update, root_dir))]
     pub fn normalize_version_update_operation(
         update: &mut VersionUpdate,
         root_dir: &Path,
     ) -> Result<(), SSTableError> {
+        // first we will remove all the tables which are added first in the changelog and then deleted to pervent uneccessary operatons
+        let mut removed_tables = HashSet::new();
+        let original_updates = std::mem::take(&mut update.operations);
+        update.operations = original_updates
+            .into_iter()
+            .rev()
+            .filter(|operation| match operation {
+                VersionOperation::Del { level: _, id } => {
+                    removed_tables.insert(id.clone());
+                    return false;
+                }
+                VersionOperation::Add {
+                    level: _,
+                    id,
+                    index: _,
+                } => {
+                    if removed_tables.contains(id) {
+                        return false;
+                    } else {
+                        return true;
+                    }
+                }
+                // below case will not happen
+                VersionOperation::AddWithMeta {
+                    level: _,
+                    meta,
+                    index: _,
+                } => {
+                    if removed_tables.contains(&meta.id) {
+                        return false;
+                    } else {
+                        return true;
+                    }
+                }
+            })
+            .rev()
+            .collect();
+
         for op in &mut update.operations {
             // We only transform Add → AddWithMeta
             let new_op = match op {
@@ -326,7 +369,7 @@ impl Version {
 #[cfg(test)]
 mod test {
 
-    use std::{sync::Arc, thread::sleep, time::Duration};
+    use std::sync::Arc;
 
     use crate::database::{
         Entry,

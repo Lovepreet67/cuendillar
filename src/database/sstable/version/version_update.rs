@@ -5,7 +5,7 @@ use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use crate::database::sstable::{errors::SSTableError, metadata::SSTMetadata};
 
 // we need to define at which index this table is required
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum VersionOperation {
     Del {
         level: u32,
@@ -78,6 +78,7 @@ impl VersionOperation {
     }
 }
 
+#[derive(Debug)]
 pub struct VersionUpdate {
     pub wal_offset: u64,
     pub operations: Vec<VersionOperation>,

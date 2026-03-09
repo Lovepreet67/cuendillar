@@ -1,0 +1,33 @@
+Using config "./default_config.toml"
+Workload: 1m
+Total Ops Completed: 1000000
+Runtime: 6.99 sec
+Throughput: 143078.22 ops/sec
+
+PUT:
+  count: 499605
+  avg: 3.20 µs
+  p50: 3 µs
+  p95: 5 µs
+  p99: 7 µs
+  p999: 15 µs
+  max: 4995 µs
+
+GET:
+  count: 400360
+  avg: 1.66 µs
+  p50: 2 µs
+  p95: 4 µs
+  p99: 5 µs
+  p999: 10 µs
+  max: 1936 µs
+
+DEL:
+  count: 100035
+  avg: 2.31 µs
+  p50: 2 µs
+  p95: 3 µs
+  p99: 5 µs
+  p999: 14 µs
+  max: 484 µs
+

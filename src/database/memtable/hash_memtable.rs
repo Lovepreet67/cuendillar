@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::database::{
@@ -41,6 +42,7 @@ impl Memtable for HashMetable {
     fn get_wal_offset(&self) -> u64 {
         self.wal_offset
     }
+    #[instrument(name = "Hash Memetable Find", skip(self))]
     fn find(
         &self,
         key: &[u8],
@@ -49,6 +51,7 @@ impl Memtable for HashMetable {
             self.store.get_key_value(key),
         ))
     }
+    #[instrument(name = "Hash Memetable Insert", skip(self))]
     fn insert(&mut self, e: crate::database::Entry, wal_offset: u64) {
         self.wal_offset = wal_offset;
         match e {
@@ -63,6 +66,7 @@ impl Memtable for HashMetable {
             }
         };
     }
+    #[instrument(name = "Hash Memetable Iter", skip(self))]
     fn iter(&self) -> Box<dyn super::MemtableIterator<Item = crate::database::Entry<'_>> + '_> {
         let mut entries: Vec<Entry<'_>> = self
             .store

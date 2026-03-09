@@ -6,6 +6,7 @@ use std::{
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use crc::Crc;
+use tracing::instrument;
 
 use crate::database::{
     config::wal_config::{WALConfig, WALVariant},
@@ -28,6 +29,7 @@ pub struct DefaultWAL {
     crc_computer: Crc<u32>,
 }
 impl DefaultWAL {
+    #[instrument(name = "Default WAL new", skip(config))]
     pub fn new(config: &WALConfig) -> Result<Self, WALError> {
         assert_eq!(config.variant, WALVariant::Default);
         if !config.wal_dir.exists() {
@@ -121,6 +123,7 @@ impl DefaultWAL {
         let data_len = 8 + 4 + 8 + payload_len + 8;
         data_len + eight_align_addition(data_len)
     }
+    #[instrument(name = "Default WAL Rotate", skip(self))]
     pub fn rotate(&mut self) -> Result<(), WALError> {
         let new_log_file_id = format!("{}.wal", self.curr_offset);
         let new_log_file_path = self.config.wal_dir.join(&new_log_file_id);
@@ -173,6 +176,7 @@ impl DefaultWAL {
     }
 }
 impl WAL for DefaultWAL {
+    #[instrument(name = "Default WAL Append Log", skip(self))]
     fn append_log(&mut self, payload: &[u8]) -> Result<u64, WALError> {
         if payload.len() as u64 > self.config.wal_max_payload_len_in_bytes {
             return Err(WALError::PayloadLengthOutOfBound(payload.len() as u64));
@@ -212,6 +216,7 @@ impl WAL for DefaultWAL {
         }
         Ok(self.curr_offset)
     }
+    #[instrument(name = "Default WAL Read", skip(self))]
     fn read(&self, offset: u64) -> Result<Box<dyn WALIterator>, WALError> {
         let files = self.get_all_files()?;
         if files.len() == 0 || offset >= self.curr_offset {

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use crate::database::config::config_error::ConfigError;
 
@@ -22,9 +23,7 @@ impl VersionManagerConfig {
         if let VersionMangerSyncVariant::GroupSync(x) = self.version_manager_sync_mode
             && x == 0
         {
-            eprintln!(
-                "Group size is set to 0 please use NoSync variant for better understandanbility"
-            )
+            error!("Group size is set to 0 please use NoSync variant for better understandanbility")
         }
         Ok(())
     }

@@ -1,5 +1,4 @@
 use std::{
-    collections::HashSet,
     fs::{File, create_dir_all},
     io::Write,
     path::{Path, PathBuf},
@@ -7,6 +6,7 @@ use std::{
 };
 
 use byteorder::{BigEndian, WriteBytesExt};
+use tracing::{info, instrument};
 
 use crate::database::{
     config::{DbConfig, bloom_config::BloomConfig, index_config::IndexConfig},
@@ -35,10 +35,12 @@ pub struct VersionManager {
 }
 
 impl VersionManager {
+    #[instrument(name = "Verion Manger New", skip(config, cleaner_channel_producer))]
     pub fn new(
         config: Arc<DbConfig>,
         cleaner_channel_producer: std::sync::mpsc::Sender<(Arc<Version>, Vec<PathBuf>)>,
     ) -> Result<Self, SSTableError> {
+        info!("Creating new Version Manager");
         let sstable_root_dir = config.sstable_root_dir.clone();
         let mut wal_config = config.wal.clone();
         wal_config.wal_sync_variant = config
@@ -54,6 +56,7 @@ impl VersionManager {
         let version_iterator = version_wal.read(0)?;
         let mut version_update_operations = vec![];
         let mut last_commited_offset = 0;
+        info!("Reading the Version WAL");
         for version_update_encoded in version_iterator {
             if let Ok((_, update_bytes)) = version_update_encoded {
                 let mut version_update = VersionUpdate::decode(&mut update_bytes.as_slice())?;
@@ -65,45 +68,14 @@ impl VersionManager {
                 ));
             }
         }
-
-        // we will keep only the add operations and remove the del operation
-        // we will travarse the list from right to left and remove all updates which are deleted in future
-        let mut removed_tables = HashSet::new();
         let mut version_update = VersionUpdate::new(last_commited_offset);
-        version_update.operations = version_update_operations
-            .into_iter()
-            .rev()
-            .filter(|operation| match operation {
-                VersionOperation::Del { level: _, id } => {
-                    removed_tables.insert(id.clone());
-                    return false;
-                }
-                VersionOperation::Add {
-                    level: _,
-                    id,
-                    index: _,
-                } => {
-                    if removed_tables.contains(id) {
-                        return false;
-                    } else {
-                        return true;
-                    }
-                }
-                // below case will not happen
-                VersionOperation::AddWithMeta {
-                    level: _,
-                    meta,
-                    index: _,
-                } => {
-                    if removed_tables.contains(&meta.id) {
-                        return false;
-                    } else {
-                        return true;
-                    }
-                }
-            })
-            .rev()
-            .collect();
+        version_update.operations = version_update_operations;
+        info!(
+            "Read Version WAL found {} total version operations, and last committed offset {}",
+            version_update.operations.len(),
+            last_commited_offset
+        );
+
         // then we will normalize this version
         Version::normalize_version_update_operation(&mut version_update, &sstable_root_dir)?;
         version.apply_update(version_update)?;
@@ -118,6 +90,12 @@ impl VersionManager {
         })
     }
     pub fn get_latest_version(&self) -> Arc<Version> {
+        // let mut file = File::options()
+        //     .create(true)
+        //     .append(true)
+        //     .open("version_log.txt")
+        //     .unwrap();
+        // writeln!(file, " version {:?}", self.version);
         self.version.clone()
     }
     // This function will return the sstatble meta which are clear to be droped
@@ -311,7 +289,15 @@ impl VersionManager {
         let deleted_files: Vec<_> = update
             .operations
             .iter()
-            .filter(|op| matches!(op, VersionOperation::Del { level, id }))
+            .filter(|op| {
+                matches!(
+                    op,
+                    VersionOperation::Del {
+                        level: _level,
+                        id: _id
+                    }
+                )
+            })
             .map(|op| {
                 match op {
                     VersionOperation::Del { level, id } => self
