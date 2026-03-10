@@ -1,4 +1,4 @@
-use cuendillar::database::{Entry, config::DbConfig, db_engine::Engine};
+use cuendillar::{Database, config::DbConfig};
 use hdrhistogram::Histogram;
 use std::fs::remove_dir_all;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -193,7 +193,7 @@ fn seed_base(flag_seed: u64) -> u64 {
 }
 
 fn run_fillrandom(
-    engine: &mut Engine,
+    db: &mut Database,
     num: u64,
     key_size: usize,
     value_size: usize,
@@ -209,12 +209,7 @@ fn run_fillrandom(
         let key_rand = rng.next_u64() % num;
         generate_key_from_int(key_rand, &mut key_buf);
         let op_started = Instant::now();
-        engine
-            .write(Entry::Row {
-                key: &key_buf,
-                value: &value,
-            })
-            .expect("fillrandom write failed");
+        db.put(&key_buf, &value).expect("fillrandom write failed");
         let micros = op_started.elapsed().as_micros() as u64;
         hist.record(micros).expect("hist record");
     }
@@ -229,7 +224,7 @@ fn run_fillrandom(
 }
 
 fn run_readrandom(
-    engine: &mut Engine,
+    db: &mut Database,
     reads: u64,
     key_space: u64,
     key_size: usize,
@@ -245,11 +240,7 @@ fn run_readrandom(
         let key_rand = rng.next_u64() % key_space;
         generate_key_from_int(key_rand, &mut key_buf);
         let op_started = Instant::now();
-        if engine
-            .find(&key_buf)
-            .expect("readrandom find failed")
-            .is_some()
-        {
+        if db.get(&key_buf).expect("readrandom find failed").is_some() {
             found += 1;
         }
         let micros = op_started.elapsed().as_micros() as u64;
@@ -323,20 +314,20 @@ fn main() {
         let _ = remove_dir_all(&config.root_dir);
     }
 
-    let mut engine = Engine::new(config.clone()).expect("failed to create engine");
+    let mut db = Database::new(config.clone()).expect("failed to create db");
 
     for benchmark in &opts.benchmarks {
         match benchmark.as_str() {
             "fillrandom" => {
                 let result =
-                    run_fillrandom(&mut engine, opts.num, opts.key_size, opts.value_size, seed);
+                    run_fillrandom(&mut db, opts.num, opts.key_size, opts.value_size, seed);
                 print_phase(&result);
             }
             "readrandom" => {
                 // Mirrors db_bench typical use_existing_db flow between phases.
-                drop(engine);
-                engine = Engine::new(config.clone()).expect("failed to reopen engine");
-                let result = run_readrandom(&mut engine, opts.reads, opts.num, opts.key_size, seed);
+                drop(db);
+                db = Database::new(config.clone()).expect("failed to reopen db");
+                let result = run_readrandom(&mut db, opts.reads, opts.num, opts.key_size, seed);
                 print_phase(&result);
             }
             other => {
@@ -347,7 +338,7 @@ fn main() {
     }
 
     if opts.destroy_db_after {
-        drop(engine);
+        drop(db);
         let _ = remove_dir_all(&config.root_dir);
     }
 }

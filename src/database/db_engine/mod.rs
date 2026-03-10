@@ -1,7 +1,10 @@
-mod errors;
+pub mod errors;
 #[cfg(test)]
 mod tests;
+
+#[allow(dead_code)]
 pub mod instrumented;
+
 use std::{
     sync::{Arc, RwLock, atomic::AtomicBool},
     thread::{self, JoinHandle, sleep},
@@ -229,7 +232,7 @@ impl Engine {
         Ok(())
     }
     #[instrument(name="Engine Find",skip(self))]
-    pub fn find(&mut self, key: &[u8]) -> Result<Option<OwnedEntry>, EngineError> {
+    pub fn find(&self, key: &[u8]) -> Result<Option<OwnedEntry>, EngineError> {
         let result = self.memtable_manager.read(
             // "During find"
             )?.find(key)?.map(|x| x.into());

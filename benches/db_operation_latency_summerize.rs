@@ -1,4 +1,4 @@
-use cuendillar::database::{config::DbConfig, db_engine::Engine};
+use cuendillar::{Database, config::DbConfig};
 use hdrhistogram::Histogram;
 
 use std::{
@@ -145,29 +145,22 @@ where
     result
 }
 
-pub fn execute_op(engine: &mut Engine, op: Operation) -> Result<(), String> {
+pub fn execute_op(db: &mut Database, op: Operation) -> Result<(), String> {
     match op {
         Operation::Get(key) => {
-            engine.find(&key).map_err(|e| format!("{:?}", e))?;
+            db.get(&key).map_err(|e| format!("{:?}", e))?;
         }
         Operation::Del(key) => {
-            engine
-                .write(cuendillar::database::Entry::Tombstone { key: &key })
-                .map_err(|e| format!("{:?}", e))?;
+            db.delete(&key).map_err(|e| format!("{:?}", e))?;
         }
         Operation::Put(key, value) => {
-            engine
-                .write(cuendillar::database::Entry::Row {
-                    key: &key,
-                    value: &value,
-                })
-                .map_err(|e| format!("{:?}", e))?;
+            db.put(&key, &value).map_err(|e| format!("{:?}", e))?;
         }
     }
     Ok(())
 }
 
-pub fn run_workload(engine: &mut Engine, path: &str) -> (Stats, Option<FailureInfo>) {
+pub fn run_workload(db: &mut Database, path: &str) -> (Stats, Option<FailureInfo>) {
     let mut stats = Stats::new();
     let file = File::open(path).unwrap();
     let reader = BufReader::new(file);
@@ -180,15 +173,15 @@ pub fn run_workload(engine: &mut Engine, path: &str) -> (Stats, Option<FailureIn
 
         let result = match parts[0] {
             "GET" => timed(
-                || execute_op(engine, Operation::Get(parts[1].into())),
+                || execute_op(db, Operation::Get(parts[1].into())),
                 &mut stats.get,
             ),
             "PUT" => timed(
-                || execute_op(engine, Operation::Put(parts[1].into(), parts[2].into())),
+                || execute_op(db, Operation::Put(parts[1].into(), parts[2].into())),
                 &mut stats.put,
             ),
             "DEL" => timed(
-                || execute_op(engine, Operation::Del(parts[1].into())),
+                || execute_op(db, Operation::Del(parts[1].into())),
                 &mut stats.del,
             ),
             _ => Err(format!("Unknown operation: {}", line)),
@@ -225,14 +218,13 @@ pub fn run_workload(engine: &mut Engine, path: &str) -> (Stats, Option<FailureIn
 pub fn run(workload: &str, file: &str) {
     let out_dir = output_dir(workload);
     let config = DbConfig::get_config().unwrap();
-    let mut engine = Engine::new(config).unwrap();
+    let mut db = Database::new(config).unwrap();
 
     println!("Warming up...");
     sleep(Duration::from_secs(5));
 
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        run_workload(&mut engine, file)
-    }));
+    let result =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_workload(&mut db, file)));
 
     match result {
         Ok((stats, failure)) => {
@@ -245,15 +237,15 @@ pub fn run(workload: &str, file: &str) {
         }
     }
 
-    drop(engine);
+    drop(db);
     let _ = remove_dir_all("./table");
 }
 
 fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter("warn")
-        .try_init()
-        .unwrap();
+    // tracing_subscriber::fmt()
+    //     .with_env_filter("warn")
+    //     .try_init()
+    //     .unwrap();
     let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "10k".to_owned());
 
     let active_workload_file = format!("workload/{}.txt", active_workload);

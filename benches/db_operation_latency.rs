@@ -1,4 +1,4 @@
-use cuendillar::database::{config::DbConfig, db_engine::Engine};
+use cuendillar::{Database, config::DbConfig};
 use hdrhistogram::Histogram;
 use plotters::{
     chart::ChartBuilder,
@@ -175,7 +175,7 @@ where
     metric.record(elapsed).unwrap();
 }
 
-pub fn run_workload(engine: &mut Engine, path: &str) -> Stats {
+pub fn run_workload(db: &mut Database, path: &str) -> Stats {
     let mut stats = Stats::new();
     let file = File::open(path).unwrap();
     let reader = BufReader::new(file);
@@ -186,15 +186,15 @@ pub fn run_workload(engine: &mut Engine, path: &str) -> Stats {
 
         match parts[0] {
             "GET" => timed(
-                || execute_op(engine, Operation::Get(parts[1].into())),
+                || execute_op(db, Operation::Get(parts[1].into())),
                 &mut stats.get,
             ),
             "PUT" => timed(
-                || execute_op(engine, Operation::Put(parts[1].into(), parts[2].into())),
+                || execute_op(db, Operation::Put(parts[1].into(), parts[2].into())),
                 &mut stats.put,
             ),
             "DEL" => timed(
-                || execute_op(engine, Operation::Del(parts[1].into())),
+                || execute_op(db, Operation::Del(parts[1].into())),
                 &mut stats.del,
             ),
             _ => panic!("Unknown operation: {}", line),
@@ -203,20 +203,13 @@ pub fn run_workload(engine: &mut Engine, path: &str) -> Stats {
     stats
 }
 
-pub fn execute_op(engine: &mut Engine, op: Operation) {
+pub fn execute_op(db: &mut Database, op: Operation) {
     match op {
         Operation::Get(key) => {
-            engine.find(&key).unwrap();
+            db.get(&key).unwrap();
         }
-        Operation::Del(key) => engine
-            .write(cuendillar::database::Entry::Tombstone { key: &key })
-            .unwrap(),
-        Operation::Put(key, value) => engine
-            .write(cuendillar::database::Entry::Row {
-                key: &key,
-                value: &value,
-            })
-            .unwrap(),
+        Operation::Del(key) => db.delete(&key).unwrap(),
+        Operation::Put(key, value) => db.put(&key, &value).unwrap(),
     };
 }
 
@@ -225,12 +218,12 @@ pub fn execute_op(engine: &mut Engine, op: Operation) {
 pub fn run(workload: &str, file: &str) {
     let out_dir = output_dir(workload);
     let config = DbConfig::get_config().unwrap();
-    let mut engine = Engine::new(config).unwrap();
+    let mut db = Database::new(config).unwrap();
 
     sleep(Duration::from_secs(10)); // warm-up
-    let stats = run_workload(&mut engine, file);
+    let stats = run_workload(&mut db, file);
     stats.report(&out_dir);
-    drop(engine);
+    drop(db);
     remove_dir_all("./table").unwrap();
 }
 

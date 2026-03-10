@@ -26,6 +26,10 @@ use crate::database::config::{
     wal_config::WALVariant,
 };
 
+/// Configuration modules for different database subsystems.
+///
+/// Each module defines configuration structures and validation logic
+/// for a specific part of the database engine.
 pub mod bloom_config;
 pub mod cleaner_config;
 pub mod compaction_config;
@@ -35,20 +39,57 @@ pub mod memtable_config;
 pub mod version_manager_config;
 pub mod wal_config;
 
+/// Top-level configuration for the database engine.
+///
+/// This structure aggregates configuration for all subsystems:
+///
+/// - **WAL** – write-ahead logging and durability
+/// - **Memtable** – in-memory write buffer
+/// - **Bloom Filter** – read optimization
+/// - **Index** – SSTable block indexing
+/// - **Compaction** – LSM-tree maintenance
+/// - **Cleaner** – removal of obsolete files
+/// - **Version Manager** – metadata and manifest management
+///
+/// The configuration can be loaded from a **TOML file** and merged
+/// with dynamically generated defaults.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct DbConfig {
+    /// Root directory of the database.
+    ///
+    /// This directory typically contains:
+    /// - WAL files
+    /// - SSTables
+    /// - metadata files
+    /// default values above mentioned directories will also created based in root_dir and
+    /// will be used when not provided explicitly
     pub root_dir: PathBuf,
+    /// Directory where SSTables are stored.
     pub sstable_root_dir: PathBuf,
+    /// Write-Ahead Log configuration.
     pub wal: WALConfig,
+    /// Memtable configuration.
     pub memtable: MemtableConfig,
+    /// Bloom filter configuration used for SSTables.
     pub bloom: BloomConfig,
+    /// SSTable index configuration.
     pub index: IndexConfig,
+    /// Compaction configuration controlling LSM-tree maintenance.
     pub compaction: CompactionConfig,
+    /// Cleaner configuration responsible for removing obsolete files.
     pub cleaning: CleanerConfig,
+    /// Version manager configuration used for metadata persistence.
     pub version_manager: VersionManagerConfig,
 }
 
 impl DbConfig {
+    /// Generates dynamic default configuration values.
+    ///
+    /// Some configuration values depend on the runtime directory layout,
+    /// so they cannot be provided as static defaults.
+    ///
+    /// This method constructs default configurations for all subsystems
+    /// based on the provided database directories.
     pub fn get_dynamic_defaults(root_dir: &Path, sstable_root_dir: &Path) -> Self {
         Self {
             root_dir: root_dir.into(),
@@ -93,6 +134,15 @@ impl DbConfig {
             },
         }
     }
+    /// Validates the entire database configuration.
+    ///
+    /// This method delegates validation to each subsystem configuration
+    /// and also checks cross-component constraints.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError`] if any subsystem configuration is invalid
+    /// or if cross-component constraints are violated.
     pub fn validate(&self) -> Result<(), ConfigError> {
         self.bloom.validate()?;
         self.cleaning.validate()?;
@@ -109,6 +159,19 @@ impl DbConfig {
         }
         Ok(())
     }
+    /// Loads the database configuration.
+    ///
+    /// The configuration loading process follows these steps:
+    ///
+    /// 1. Determine the configuration file path from the `CONFIG_PATH`
+    ///    environment variable or fall back to `./default_config.toml`.
+    /// 2. Extract the root directories from the configuration file.
+    /// 3. Generate dynamic default configuration values.
+    /// 4. Merge defaults with user-provided TOML configuration.
+    /// 5. Validate the final configuration.
+    ///
+    /// The resulting configuration is wrapped in an [`Arc`] to allow
+    /// safe sharing across multiple database components.
     pub fn get_config() -> Result<Arc<DbConfig>, ConfigError> {
         let config_file_path =
             std::env::var("CONFIG_PATH").unwrap_or_else(|_| "./default_config.toml".to_owned());
@@ -134,6 +197,10 @@ impl DbConfig {
         Ok(Arc::new(config))
     }
 
+    /// Returns a temporary configuration for testing.
+    ///
+    /// This creates a temporary directory and constructs a configuration
+    /// using dynamic defaults so that tests can run in isolation.
     #[cfg(test)]
     pub fn get_test_config() -> (Arc<DbConfig>, TempDir) {
         let root_dir = TempDir::new().unwrap();

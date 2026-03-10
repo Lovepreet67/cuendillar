@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use cuendillar::database::{OwnedEntry, config::DbConfig, db_engine::Engine};
+use cuendillar::{Database, OwnedEntry, config::DbConfig};
 use tracing::info;
 #[derive(Debug)]
 pub enum Operation {
@@ -31,19 +31,19 @@ pub fn get_operation(line: &str) -> Operation {
     }
 }
 
-pub fn run_workload(engine: &mut Engine, path: &str) {
+pub fn run_workload(db: &Database, path: &str) {
     let file = File::open(path).unwrap();
     let reader = BufReader::new(file);
     for line in reader.lines() {
         let op = get_operation(&line.unwrap());
-        execute_op(engine, op);
+        execute_op(db, op);
     }
 }
 
-pub fn execute_op(engine: &mut Engine, op: Operation) {
+pub fn execute_op(db: &Database, op: Operation) {
     match op {
         Operation::Get(key, hit, value) => {
-            let x = engine.find(&key).unwrap();
+            let x = db.get(&key).unwrap();
             if !hit {
                 if x.is_some() {
                     assert_eq!(x, Some(OwnedEntry::Tombstone { key }));
@@ -52,27 +52,20 @@ pub fn execute_op(engine: &mut Engine, op: Operation) {
                 assert_eq!(x, Some(OwnedEntry::Row { key, value }))
             }
         }
-        Operation::Del(key) => engine
-            .write(cuendillar::database::Entry::Tombstone { key: &key })
-            .unwrap(),
-        Operation::Put(key, value) => engine
-            .write(cuendillar::database::Entry::Row {
-                key: &key,
-                value: &value,
-            })
-            .unwrap(),
+        Operation::Del(key) => db.delete(&key).unwrap(),
+        Operation::Put(key, value) => db.put(&key, &value).unwrap(),
     };
 }
 #[test]
-pub fn db_engine_test() {
+pub fn db_test() {
     // tracing_subscriber::fmt()
     //     .with_env_filter("debug")
     //     .try_init()
     //     .unwrap();
     // let dir = TempDir::new().unwrap();
-    // let mut engine = Engine::new(Some(dir.path().into())).unwrap();
+    // let mut db = db::new(Some(dir.path().into())).unwrap();
     let config = DbConfig::get_config().unwrap();
-    let mut engine = match Engine::new(config.clone()) {
+    let mut db = match Database::new(config.clone()) {
         Ok(v) => v,
         Err(e) => {
             panic!("{:?}", e)
@@ -82,47 +75,47 @@ pub fn db_engine_test() {
     let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "100k".to_owned());
     let active_workload_file = format!("workload/{}.txt", active_workload);
     println!("Active workload is set to {}", active_workload);
-    run_workload(&mut engine, &active_workload_file);
-    drop(engine);
+    run_workload(&mut db, &active_workload_file);
+    drop(db);
     remove_dir_all(&config.root_dir).unwrap();
     sleep(Duration::from_secs(10)); // giving time to remove all dir
 }
 
 #[test]
-pub fn db_engine_controlled_recovery_test() {
+pub fn db_controlled_recovery_test() {
     // tracing_subscriber::fmt()
     //     .with_env_filter("debug")
     //     .try_init()
     //     .unwrap();
     // let dir = TempDir::new().unwrap();
-    // let mut engine = Engine::new(Some(dir.path().into())).unwrap();
+    // let mut db = db::new(Some(dir.path().into())).unwrap();
     let config = DbConfig::get_config().unwrap();
 
     let mut counter = 1;
-    let mut engine = match Engine::new(config.clone()) {
+    let mut db = match Database::new(config.clone()) {
         Ok(v) => Some(v),
         Err(e) => {
             panic!("{:?}", e)
         }
     };
-    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "100k".to_owned());
+    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "1m".to_owned());
     let active_workload_file = format!("workload/{}.txt", active_workload);
     println!("Active workload is set to {}", active_workload);
     let file = File::open(active_workload_file).unwrap();
     let reader = BufReader::new(file);
     for line in reader.lines() {
-        // after every 100000 operations we will delte the engine and create new
+        // after every 100000 operations we will delte the db and create new
         if counter % 99999 == 0 {
-            // we will delte the engine
-            drop(engine);
+            // we will delte the db
+            drop(db);
             info!("Starting recovery");
-            engine = Some(Engine::new(config.clone()).unwrap());
+            db = Some(Database::new(config.clone()).unwrap());
             info!("recovery complete");
         }
         let op = get_operation(&line.unwrap());
-        execute_op(engine.as_mut().unwrap(), op);
+        execute_op(db.as_mut().unwrap(), op);
         counter += 1;
     }
-    drop(engine);
+    drop(db);
     remove_dir_all(&config.root_dir).unwrap();
 }
