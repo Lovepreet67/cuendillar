@@ -23,13 +23,22 @@ impl Debug for Entry<'_> {
         match self {
             Self::Row { key, value } => {
                 f.debug_struct("Entry")
-                    .field("key", &String::from_utf8(key.to_vec()).unwrap())
-                    .field("value", &String::from_utf8(value.to_vec()).unwrap())
+                    .field(
+                        "key",
+                        &String::from_utf8(key.to_vec()).unwrap_or(format!("{:?}", key)),
+                    )
+                    .field(
+                        "value",
+                        &String::from_utf8(value.to_vec()).unwrap_or(format!("{:?}", value)),
+                    )
                     .finish()?;
             }
             Self::Tombstone { key } => {
                 f.debug_struct("Entry")
-                    .field("key", &String::from_utf8(key.to_vec()).unwrap())
+                    .field(
+                        "key",
+                        &String::from_utf8(key.to_vec()).unwrap_or(format!("{:?}", key)),
+                    )
                     .field("value", &"None")
                     .finish()?;
             }
@@ -103,13 +112,22 @@ impl Debug for OwnedEntry {
         match self {
             Self::Row { key, value } => {
                 f.debug_struct("OwnedEntry")
-                    .field("key", &String::from_utf8(key.to_vec()).unwrap())
-                    .field("value", &String::from_utf8(value.to_vec()).unwrap())
+                    .field(
+                        "key",
+                        &String::from_utf8(key.to_vec()).unwrap_or(format!("{:?}", key)),
+                    )
+                    .field(
+                        "value",
+                        &String::from_utf8(value.to_vec()).unwrap_or(format!("{:?}", value)),
+                    )
                     .finish()?;
             }
             Self::Tombstone { key } => {
                 f.debug_struct("OwnedEntry")
-                    .field("key", &String::from_utf8(key.to_vec()).unwrap())
+                    .field(
+                        "key",
+                        &String::from_utf8(key.to_vec()).unwrap_or(format!("{:?}", key)),
+                    )
                     .field("value", &"None")
                     .finish()?;
             }

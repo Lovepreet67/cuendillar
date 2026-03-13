@@ -60,7 +60,8 @@ impl VersionManager {
         for version_update_encoded in version_iterator {
             if let Ok((_, update_bytes)) = version_update_encoded {
                 let mut version_update = VersionUpdate::decode(&mut update_bytes.as_slice())?;
-                last_commited_offset = version_update.wal_offset;
+                last_commited_offset =
+                    std::cmp::max(version_update.wal_offset, last_commited_offset);
                 version_update_operations.append(&mut version_update.operations);
             } else {
                 return Err(SSTableError::General(

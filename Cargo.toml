@@ -32,7 +32,7 @@ harness = false
 
 [[bench]]
 name = "db_bench_rocksdb_compatible"
-path = "benches/db_bench_rocksdb_compatible.rs"
+path = "benches/db_bench_rocksdb_compatible/main.rs"
 harness = false
 
 
