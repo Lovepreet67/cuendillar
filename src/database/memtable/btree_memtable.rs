@@ -8,10 +8,9 @@ use crate::database::{
     memtable::{Memtable, MemtableIterator},
 };
 
-/// NOT PERFORMING GOOD
 pub struct BTreeMemtable {
     id: Uuid,
-    store: BTreeMap<Vec<u8>, Option<Vec<u8>>>,
+    store: BTreeMap<Vec<u8>, (u64, Option<Vec<u8>>)>,
     curr_size: u64,
     wal_offset: u64,
 }
@@ -25,11 +24,18 @@ impl BTreeMemtable {
         }
     }
     fn get_entry_from_btree_entry<'a>(
-        btree_entry: Option<(&'a Vec<u8>, &'a Option<Vec<u8>>)>,
+        btree_entry: Option<(&'a Vec<u8>, &'a (u64, Option<Vec<u8>>))>,
     ) -> Option<Entry<'a>> {
         match btree_entry {
-            Some((key, Some(value))) => Some(Entry::Row { key, value }),
-            Some((key, None)) => Some(Entry::Tombstone { key }),
+            Some((key, (seq_no, Some(value)))) => Some(Entry::Row {
+                seq_no: *seq_no,
+                key,
+                value,
+            }),
+            Some((key, (seq_no, None))) => Some(Entry::Tombstone {
+                seq_no: *seq_no,
+                key,
+            }),
             None => None,
         }
     }
@@ -55,13 +61,13 @@ impl Memtable for BTreeMemtable {
     fn insert(&mut self, e: crate::database::Entry, wal_offset: u64) {
         self.wal_offset = wal_offset;
         match e {
-            Entry::Row { key, value } => {
-                self.store.insert(key.into(), Some(value.into()));
+            Entry::Row { seq_no, key, value } => {
+                self.store.insert(key.into(), (seq_no, Some(value.into())));
                 self.curr_size += key.len() as u64;
                 self.curr_size += value.len() as u64;
             }
-            Entry::Tombstone { key } => {
-                self.store.insert(key.into(), None);
+            Entry::Tombstone { seq_no, key } => {
+                self.store.insert(key.into(), (seq_no, None));
                 self.curr_size += key.len() as u64;
             }
         };
@@ -88,13 +94,13 @@ impl Memtable for BTreeMemtable {
 pub struct BTreeMemtableIterator<'a> {
     first_entry: Option<Entry<'a>>,
     last_entry: Option<Entry<'a>>,
-    iterator: Iter<'a, Vec<u8>, Option<Vec<u8>>>,
+    iterator: Iter<'a, Vec<u8>, (u64, Option<Vec<u8>>)>,
 }
 impl<'a> BTreeMemtableIterator<'a> {
     pub fn new(
         first_entry: Option<Entry<'a>>,
         last_entry: Option<Entry<'a>>,
-        iterator: Iter<'a, Vec<u8>, Option<Vec<u8>>>,
+        iterator: Iter<'a, Vec<u8>, (u64, Option<Vec<u8>>)>,
     ) -> Self {
         Self {
             first_entry,

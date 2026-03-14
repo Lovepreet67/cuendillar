@@ -5,10 +5,7 @@ pub use crate::database::config::{
     self, DbConfig, bloom_config, cleaner_config, compaction_config, config_error, index_config,
     memtable_config, version_manager_config, wal_config,
 };
-use crate::database::{
-    Entry,
-    db_engine::{Engine, errors::EngineError},
-};
+use crate::database::db_engine::{Engine, errors::EngineError};
 
 mod database;
 /// Public database handle.
@@ -94,9 +91,8 @@ impl Database {
     /// # Errors
     ///
     /// Returns `EngineError` if the write fails due to WAL or storage errors.
-    pub fn put(&self, key: &[u8], value: &[u8]) -> Result<(), EngineError> {
-        let e = Entry::Row { key, value };
-        self.db.write()?.write(e)
+    pub fn put(&self, key: &[u8], value: &[u8]) -> Result<u64, EngineError> {
+        self.db.write()?.write(key, value)
     }
     /// Deletes a key from the database.
     ///
@@ -113,8 +109,7 @@ impl Database {
     /// # Errors
     ///
     /// Returns `EngineError` if the delete operation fails.
-    pub fn delete(&self, key: &[u8]) -> Result<(), EngineError> {
-        let e = Entry::Tombstone { key };
-        self.db.write()?.write(e)
+    pub fn delete(&self, key: &[u8]) -> Result<u64, EngineError> {
+        self.db.write()?.write(key, &[])
     }
 }

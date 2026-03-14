@@ -8,6 +8,7 @@ use crate::database::{
     memtable::{Memtable, MemtableIterator, errors::MemtableError},
 };
 pub struct VectorMemtableEntry {
+    seq_no: u64,
     key: Vec<u8>,
     value: Option<Vec<u8>>,
 }
@@ -31,11 +32,13 @@ impl VectorMemtableEntry {
 impl From<Entry<'_>> for VectorMemtableEntry {
     fn from(value: Entry) -> Self {
         return match value {
-            Entry::Row { key, value } => Self {
+            Entry::Row { seq_no, key, value } => Self {
+                seq_no,
                 key: key.into(),
                 value: Some(value.into()),
             },
-            Entry::Tombstone { key } => Self {
+            Entry::Tombstone { seq_no, key } => Self {
+                seq_no,
                 key: key.into(),
                 value: None,
             },
@@ -45,9 +48,13 @@ impl From<Entry<'_>> for VectorMemtableEntry {
 impl<'a> From<&'a VectorMemtableEntry> for Entry<'a> {
     fn from(value: &'a VectorMemtableEntry) -> Self {
         if value.is_deleted() {
-            return Entry::Tombstone { key: &value.key };
+            return Entry::Tombstone {
+                seq_no: value.seq_no,
+                key: &value.key,
+            };
         } else {
             return Entry::Row {
+                seq_no: value.seq_no,
                 key: &value.key,
                 value: value.value.as_deref().unwrap(),
             };

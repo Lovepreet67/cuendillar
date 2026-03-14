@@ -45,15 +45,24 @@ pub fn execute_op(db: &Database, op: Operation) {
         Operation::Get(key, hit, value) => {
             let x = db.get(&key).unwrap();
             if !hit {
-                if x.is_some() {
-                    assert_eq!(x, Some(OwnedEntry::Tombstone { key }));
+                if let Some(x) = x {
+                    assert!(x.is_equal(&OwnedEntry::Tombstone { seq_no: 0, key }));
                 }
             } else {
-                assert_eq!(x, Some(OwnedEntry::Row { key, value }))
+                let x = x.unwrap();
+                assert!(x.is_equal(&OwnedEntry::Row {
+                    seq_no: 1,
+                    key,
+                    value
+                }));
             }
         }
-        Operation::Del(key) => db.delete(&key).unwrap(),
-        Operation::Put(key, value) => db.put(&key, &value).unwrap(),
+        Operation::Del(key) => {
+            db.delete(&key).unwrap();
+        }
+        Operation::Put(key, value) => {
+            db.put(&key, &value).unwrap();
+        }
     };
 }
 #[test]

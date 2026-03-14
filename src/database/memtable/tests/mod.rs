@@ -8,6 +8,7 @@ mod vector_memtable_test;
 pub fn memtable_test_insert_and_find(memtable: &mut impl Memtable) {
     memtable.insert(
         Entry::Row {
+            seq_no: 0,
             key: b"id1",
             value: b"value1",
         },
@@ -15,6 +16,7 @@ pub fn memtable_test_insert_and_find(memtable: &mut impl Memtable) {
     );
     memtable.insert(
         Entry::Row {
+            seq_no: 1,
             key: b"id2",
             value: b"value2",
         },
@@ -22,6 +24,7 @@ pub fn memtable_test_insert_and_find(memtable: &mut impl Memtable) {
     );
     memtable.insert(
         Entry::Row {
+            seq_no: 2,
             key: b"id3",
             value: b"value3",
         },
@@ -30,6 +33,7 @@ pub fn memtable_test_insert_and_find(memtable: &mut impl Memtable) {
     assert_eq!(
         memtable.find(b"id1").unwrap(),
         Some(Entry::Row {
+            seq_no: 0,
             key: b"id1",
             value: b"value1",
         })
@@ -37,6 +41,7 @@ pub fn memtable_test_insert_and_find(memtable: &mut impl Memtable) {
     assert_eq!(
         memtable.find("id2".as_bytes()).unwrap(),
         Some(Entry::Row {
+            seq_no: 1,
             key: b"id2",
             value: b"value2",
         })
@@ -44,6 +49,7 @@ pub fn memtable_test_insert_and_find(memtable: &mut impl Memtable) {
     assert_eq!(
         memtable.find("id3".as_bytes()).unwrap(),
         Some(Entry::Row {
+            seq_no: 2,
             key: b"id3",
             value: b"value3",
         })
@@ -53,6 +59,7 @@ pub fn memtable_test_insert_and_find(memtable: &mut impl Memtable) {
 pub fn memtable_test_delete(memtable: &mut impl Memtable) {
     memtable.insert(
         Entry::Row {
+            seq_no: 0,
             key: b"id1",
             value: b"value1",
         },
@@ -60,6 +67,7 @@ pub fn memtable_test_delete(memtable: &mut impl Memtable) {
     );
     memtable.insert(
         Entry::Row {
+            seq_no: 1,
             key: b"id2",
             value: b"value2",
         },
@@ -68,6 +76,7 @@ pub fn memtable_test_delete(memtable: &mut impl Memtable) {
     assert_eq!(
         memtable.find(b"id1").unwrap(),
         Some(Entry::Row {
+            seq_no: 0,
             key: b"id1",
             value: b"value1",
         })
@@ -75,20 +84,31 @@ pub fn memtable_test_delete(memtable: &mut impl Memtable) {
     assert_eq!(
         memtable.find("id2".as_bytes()).unwrap(),
         Some(Entry::Row {
+            seq_no: 1,
             key: b"id2",
             value: b"value2",
         })
     );
-    memtable.insert(Entry::Tombstone { key: b"id2" }, 2);
+    memtable.insert(
+        Entry::Tombstone {
+            seq_no: 2,
+            key: b"id2",
+        },
+        2,
+    );
     assert_eq!(
         memtable.find("id2".as_bytes()),
-        Ok(Some(Entry::Tombstone { key: b"id2" }))
+        Ok(Some(Entry::Tombstone {
+            seq_no: 2,
+            key: b"id2"
+        }))
     );
 }
 
 pub fn memtable_test_iterator(memtable: &mut impl Memtable) {
     memtable.insert(
         Entry::Row {
+            seq_no: 0,
             key: b"id1",
             value: b"value1",
         },
@@ -96,6 +116,7 @@ pub fn memtable_test_iterator(memtable: &mut impl Memtable) {
     );
     memtable.insert(
         Entry::Row {
+            seq_no: 1,
             key: b"id2",
             value: b"value2",
         },
@@ -103,6 +124,7 @@ pub fn memtable_test_iterator(memtable: &mut impl Memtable) {
     );
     memtable.insert(
         Entry::Row {
+            seq_no: 2,
             key: b"id3",
             value: b"value3",
         },
@@ -111,6 +133,7 @@ pub fn memtable_test_iterator(memtable: &mut impl Memtable) {
     assert_eq!(
         memtable.find(b"id1").unwrap(),
         Some(Entry::Row {
+            seq_no: 0,
             key: b"id1",
             value: b"value1",
         })
@@ -121,14 +144,17 @@ pub fn memtable_test_iterator(memtable: &mut impl Memtable) {
         items,
         vec![
             Entry::Row {
+                seq_no: 0,
                 key: b"id1",
                 value: b"value1",
             },
             Entry::Row {
+                seq_no: 1,
                 key: b"id2",
                 value: b"value2",
             },
             Entry::Row {
+                seq_no: 2,
                 key: b"id3",
                 value: b"value3",
             },

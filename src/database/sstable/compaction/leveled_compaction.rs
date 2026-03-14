@@ -221,7 +221,7 @@ impl LevelCompaction {
                         .into_iter()
                         .filter(|entry| {
                             return match entry {
-                                OwnedEntry::Tombstone { key: _ } => false,
+                                OwnedEntry::Tombstone { seq_no: _, key: _ } => false,
                                 _ => true,
                             };
                         })
