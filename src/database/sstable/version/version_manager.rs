@@ -116,11 +116,11 @@ impl VersionManager {
         let mut byte_encoded_since_last_index = self.config.index.index_block_min_size;
         let mt_iter = mt.iter();
         let first_key = mt_iter
-            .get_first_entry()
+            .first_entry()
             .expect("Memtable to Be flushed should contain atleast one entry")
             .get_key()
             .into();
-        let last_key = mt_iter.get_last_entry().unwrap().get_key().into();
+        let last_key = mt_iter.last_entry().unwrap().get_key().into();
         for i in mt_iter {
             // check if entry is eligible for entry
             if byte_encoded_since_last_index >= self.config.index.index_block_min_size {
@@ -208,11 +208,11 @@ impl VersionManager {
         let mut byte_encoded_since_last_index = index_config.index_block_min_size;
         let mt_iter = mt.iter();
         let first_key = mt_iter
-            .get_first_entry()
+            .first_entry()
             .expect("Memtable to Be flushed should contain atleast one entry")
             .get_key()
             .into();
-        let last_key = mt_iter.get_last_entry().unwrap().get_key().into();
+        let last_key = mt_iter.last_entry().unwrap().get_key().into();
         for i in mt_iter {
             // check if entry is eligible for entry
             if byte_encoded_since_last_index >= index_config.index_block_min_size {

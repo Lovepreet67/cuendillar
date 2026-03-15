@@ -1,3 +1,4 @@
+use crate::OwnedEntry;
 use crate::database::Entry;
 use crate::database::memtable::Memtable;
 
@@ -139,24 +140,24 @@ pub fn memtable_test_iterator(memtable: &mut impl Memtable) {
         })
     );
     // testing iterator
-    let items = memtable.iter().collect::<Vec<Entry>>();
+    let items = &memtable.iter().collect::<Vec<OwnedEntry>>();
     assert_eq!(
         items,
-        vec![
-            Entry::Row {
+        &vec![
+            OwnedEntry::Row {
                 seq_no: 0,
-                key: b"id1",
-                value: b"value1",
+                key: b"id1".into(),
+                value: b"value1".into(),
             },
-            Entry::Row {
+            OwnedEntry::Row {
                 seq_no: 1,
-                key: b"id2",
-                value: b"value2",
+                key: b"id2".into(),
+                value: b"value2".into(),
             },
-            Entry::Row {
+            OwnedEntry::Row {
                 seq_no: 2,
-                key: b"id3",
-                value: b"value3",
+                key: b"id3".into(),
+                value: b"value3".into(),
             },
         ]
     )

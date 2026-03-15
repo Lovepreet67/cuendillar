@@ -1,0 +1,32 @@
+Cuendillar Benchmark Report
+===========================
+General Report
+Total Ops: 1000000
+Total Runtime: 2.977300709s sec
+AVG Throughput: 335874.70589622593 ops/sec
+
+Timestamp: Instant { tv_sec: 24276, tv_nsec: 571402000 }
+Count: 1000000
+Duration: 2 secs
+p50:   2 us
+p95:   4 us
+p99:   6 us
+p99.9: 10 us
+Max:   5991 us
+
+Cuendillar Benchmark Report
+===========================
+General Report
+Total Ops: 1000000
+Total Runtime: 3.806002333s sec
+AVG Throughput: 262742.8762535128 ops/sec
+
+Timestamp: Instant { tv_sec: 24367, tv_nsec: 489611250 }
+Count: 1000000
+Duration: 3 secs
+p50:   2 us
+p95:   5 us
+p99:   12 us
+p99.9: 163 us
+Max:   1223 us
+

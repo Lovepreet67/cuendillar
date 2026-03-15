@@ -3,9 +3,13 @@ use std::collections::HashSet;
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::database::{
-    Entry,
-    memtable::{Memtable, MemtableIterator, errors::MemtableError},
+use crate::{
+    OwnedEntry,
+    database::{
+        Entry,
+        iterator::DatabaseIterator,
+        memtable::{Memtable, errors::MemtableError},
+    },
 };
 pub struct VectorMemtableEntry {
     seq_no: u64,
@@ -61,6 +65,22 @@ impl<'a> From<&'a VectorMemtableEntry> for Entry<'a> {
         }
     }
 }
+impl<'a> From<&'a VectorMemtableEntry> for OwnedEntry {
+    fn from(value: &'a VectorMemtableEntry) -> Self {
+        if value.is_deleted() {
+            return OwnedEntry::Tombstone {
+                seq_no: value.seq_no,
+                key: value.key.clone(),
+            };
+        } else {
+            return OwnedEntry::Row {
+                seq_no: value.seq_no,
+                key: value.key.clone(),
+                value: value.value.clone().unwrap(),
+            };
+        }
+    }
+}
 pub struct VectorMemtable {
     id: Uuid,
     wal_offset: u64,
@@ -98,7 +118,7 @@ impl Memtable for VectorMemtable {
         return Ok(None);
     }
     #[instrument(name = "Vector Memetable Iter", skip(self))]
-    fn iter(&self) -> Box<dyn MemtableIterator<Item = Entry<'_>> + '_> {
+    fn iter(&self) -> Box<dyn DatabaseIterator + '_> {
         // we will store a copy of enteries in sorted order
         let mut seen = HashSet::new();
         let mut entries = Vec::new();
@@ -129,9 +149,16 @@ pub(crate) struct VectorMemtableIterator<'a> {
     entries: Vec<&'a VectorMemtableEntry>,
     curr: usize,
 }
-impl<'a> Iterator for VectorMemtableIterator<'a> {
-    type Item = Entry<'a>;
-    fn next(&mut self) -> Option<Self::Item> {
+
+impl<'a> DatabaseIterator for VectorMemtableIterator<'a> {
+    fn peek(&self) -> Option<Entry<'a>> {
+        if self.entries.len() > self.curr {
+            return Some(self.entries[self.curr].into());
+        } else {
+            None
+        }
+    }
+    fn next_owned(&mut self) -> Option<crate::OwnedEntry> {
         if self.curr >= self.entries.len() {
             None
         } else {
@@ -140,17 +167,14 @@ impl<'a> Iterator for VectorMemtableIterator<'a> {
             Some(e.into())
         }
     }
-}
-
-impl<'a> MemtableIterator for VectorMemtableIterator<'a> {
-    fn get_first_entry(&self) -> Option<Entry<'_>> {
+    fn first_entry(&self) -> Option<Entry<'_>> {
         if self.entries.len() > 0 {
             Some(self.entries[0].into())
         } else {
             None
         }
     }
-    fn get_last_entry(&self) -> Option<Entry<'_>> {
+    fn last_entry(&self) -> Option<Entry<'_>> {
         if self.entries.len() > 0 {
             Some(self.entries[self.entries.len() - 1].into())
         } else {

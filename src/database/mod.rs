@@ -104,6 +104,16 @@ impl Entry<'_> {
             Self::Tombstone { seq_no: _, key } => &key,
         };
     }
+    pub fn get_seq_no(&self) -> u64 {
+        return match self {
+            Self::Row {
+                seq_no,
+                key: _,
+                value: _,
+            } => *seq_no,
+            Self::Tombstone { seq_no, key: _ } => *seq_no,
+        };
+    }
 }
 
 #[derive(PartialEq, Clone)]
@@ -120,7 +130,7 @@ pub enum OwnedEntry {
 }
 
 impl OwnedEntry {
-    pub fn get_id(&self) -> &[u8] {
+    pub fn get_key(&self) -> &[u8] {
         return match self {
             Self::Row {
                 seq_no: _,
@@ -129,6 +139,44 @@ impl OwnedEntry {
             } => &key,
             Self::Tombstone { seq_no: _, key } => &key,
         };
+    }
+    pub fn get_seq_no(&self) -> u64 {
+        return match self {
+            Self::Row {
+                seq_no,
+                key: _,
+                value: _,
+            } => *seq_no,
+            Self::Tombstone { seq_no, key: _ } => *seq_no,
+        };
+    }
+    pub fn encode(&self, writer: &mut impl Write) -> Result<u64, std::io::Error> {
+        let mut bytes_writen = 0;
+        match self {
+            crate::database::OwnedEntry::Row { seq_no, key, value } => {
+                bytes_writen += 8;
+                writer.write_u64::<BigEndian>(*seq_no)?;
+                bytes_writen += 4;
+                writer.write_u32::<BigEndian>(key.len() as u32)?;
+                bytes_writen += key.len();
+                writer.write(key)?;
+                bytes_writen += 4;
+                writer.write_u32::<BigEndian>(value.len() as u32)?;
+                bytes_writen += value.len();
+                writer.write(value)?;
+            }
+            crate::database::OwnedEntry::Tombstone { seq_no, key } => {
+                bytes_writen += 8;
+                writer.write_u64::<BigEndian>(*seq_no)?;
+                bytes_writen += 4;
+                writer.write_u32::<BigEndian>(key.len() as u32)?;
+                bytes_writen += key.len();
+                writer.write(key)?;
+                bytes_writen += 4;
+                writer.write_u32::<BigEndian>(0 as u32)?;
+            }
+        }
+        return Ok(bytes_writen as u64);
     }
     pub fn decode(reader: &mut impl Read) -> Result<Self, std::io::Error> {
         let seq_no = reader.read_u64::<BigEndian>()?;

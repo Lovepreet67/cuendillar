@@ -185,9 +185,9 @@ impl SSTMetadata {
             reader.read_exact_at(&mut buf, block_offset.start)?;
             let mut reader = Cursor::new(&buf);
             while let Ok(entry) = OwnedEntry::decode(&mut reader) {
-                if key == entry.get_id() {
+                if key == entry.get_key() {
                     return Ok(Some(entry));
-                } else if entry.get_id() > key {
+                } else if entry.get_key() > key {
                     break;
                 }
             }

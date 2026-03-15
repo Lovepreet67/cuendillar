@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::database::{
-    Entry,
-    memtable::{Memtable, MemtableIterator},
+use crate::{
+    OwnedEntry,
+    database::{Entry, iterator::DatabaseIterator, memtable::Memtable},
 };
 
 /// NOT PERFORMING GOOD
@@ -74,7 +74,7 @@ impl Memtable for HashMetable {
         };
     }
     #[instrument(name = "Hash Memetable Iter", skip(self))]
-    fn iter(&self) -> Box<dyn super::MemtableIterator<Item = crate::database::Entry<'_>> + '_> {
+    fn iter(&self) -> Box<dyn DatabaseIterator + '_> {
         let mut entries: Vec<Entry<'_>> = self
             .store
             .iter()
@@ -96,9 +96,9 @@ pub(crate) struct HashMetableIterator<'a> {
     entries: Vec<Entry<'a>>,
     curr: usize,
 }
-impl<'a> Iterator for HashMetableIterator<'a> {
-    type Item = Entry<'a>;
-    fn next(&mut self) -> Option<Self::Item> {
+
+impl<'a> DatabaseIterator for HashMetableIterator<'a> {
+    fn next_owned(&mut self) -> Option<OwnedEntry> {
         if self.curr >= self.entries.len() {
             None
         } else {
@@ -107,17 +107,21 @@ impl<'a> Iterator for HashMetableIterator<'a> {
             Some(e.into())
         }
     }
-}
-
-impl<'a> MemtableIterator for HashMetableIterator<'a> {
-    fn get_first_entry(&self) -> Option<Entry<'_>> {
+    fn peek(&self) -> Option<Entry<'a>> {
+        if self.entries.len() > self.curr {
+            return Some(self.entries[self.curr].clone().into());
+        } else {
+            None
+        }
+    }
+    fn first_entry(&self) -> Option<Entry<'a>> {
         if self.entries.len() > 0 {
             Some(self.entries[0].clone())
         } else {
             None
         }
     }
-    fn get_last_entry(&self) -> Option<Entry<'_>> {
+    fn last_entry(&self) -> Option<Entry<'a>> {
         if self.entries.len() > 0 {
             Some(self.entries[self.entries.len() - 1].clone())
         } else {
