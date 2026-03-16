@@ -40,6 +40,22 @@ impl HashMetable {
             None => None,
         }
     }
+    fn get_Owned_entry_from_hashtable_entry<'a>(
+        hashtable_entry: Option<(&'a Vec<u8>, &'a (u64, Option<Vec<u8>>))>,
+    ) -> Option<OwnedEntry> {
+        match hashtable_entry {
+            Some((key, (seq_no, Some(value)))) => Some(OwnedEntry::Row {
+                seq_no: *seq_no,
+                key: key.clone(),
+                value: value.clone(),
+            }),
+            Some((key, (seq_no, None))) => Some(OwnedEntry::Tombstone {
+                seq_no: *seq_no,
+                key: key.clone(),
+            }),
+            None => None,
+        }
+    }
 }
 
 impl Memtable for HashMetable {
@@ -74,11 +90,11 @@ impl Memtable for HashMetable {
         };
     }
     #[instrument(name = "Hash Memetable Iter", skip(self))]
-    fn iter(&self) -> Box<dyn DatabaseIterator + '_> {
-        let mut entries: Vec<Entry<'_>> = self
+    fn iter(&self) -> Box<dyn DatabaseIterator> {
+        let mut entries: Vec<OwnedEntry> = self
             .store
             .iter()
-            .map(|item| Self::get_entry_from_hashtable_entry(Some(item)).unwrap())
+            .map(|item| Self::get_Owned_entry_from_hashtable_entry(Some(item)).unwrap())
             .collect();
         entries.sort_by(|a, b| a.get_key().cmp(&b.get_key()));
         Box::new(HashMetableIterator { entries, curr: 0 })
@@ -92,12 +108,12 @@ impl Memtable for HashMetable {
     }
 }
 
-pub(crate) struct HashMetableIterator<'a> {
-    entries: Vec<Entry<'a>>,
+pub(crate) struct HashMetableIterator {
+    entries: Vec<OwnedEntry>,
     curr: usize,
 }
 
-impl<'a> DatabaseIterator for HashMetableIterator<'a> {
+impl DatabaseIterator for HashMetableIterator {
     fn next_owned(&mut self) -> Option<OwnedEntry> {
         if self.curr >= self.entries.len() {
             None
@@ -107,23 +123,23 @@ impl<'a> DatabaseIterator for HashMetableIterator<'a> {
             Some(e.into())
         }
     }
-    fn peek(&self) -> Option<Entry<'a>> {
+    fn peek(&self) -> Option<Entry<'_>> {
         if self.entries.len() > self.curr {
-            return Some(self.entries[self.curr].clone().into());
+            return Some((&self.entries[self.curr]).into());
         } else {
             None
         }
     }
-    fn first_entry(&self) -> Option<Entry<'a>> {
+    fn first_entry(&self) -> Option<Entry<'_>> {
         if self.entries.len() > 0 {
-            Some(self.entries[0].clone())
+            Some((&self.entries[0]).into())
         } else {
             None
         }
     }
-    fn last_entry(&self) -> Option<Entry<'a>> {
+    fn last_entry(&self) -> Option<Entry<'_>> {
         if self.entries.len() > 0 {
-            Some(self.entries[self.entries.len() - 1].clone())
+            Some((&self.entries[self.entries.len() - 1]).into())
         } else {
             None
         }

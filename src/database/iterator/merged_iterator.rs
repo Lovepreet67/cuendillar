@@ -5,12 +5,12 @@ use crate::{
 
 use std::collections::BinaryHeap;
 
-pub struct MergedIterator<'a> {
-    iterators: BinaryHeap<Box<dyn DatabaseIterator + 'a>>,
+pub struct MergedIterator {
+    iterators: BinaryHeap<Box<dyn DatabaseIterator>>,
     first_entry: Option<OwnedEntry>,
     last_entry: Option<OwnedEntry>,
 }
-impl<'a> MergedIterator<'a> {
+impl MergedIterator {
     pub fn new() -> Self {
         Self {
             iterators: BinaryHeap::new(),
@@ -19,7 +19,7 @@ impl<'a> MergedIterator<'a> {
         }
     }
 
-    pub fn add_iterator(&mut self, iterator: Box<dyn DatabaseIterator + 'a>) {
+    pub fn add_iterator(&mut self, iterator: Box<dyn DatabaseIterator>) {
         if iterator.peek().is_some() {
             // now we will upadate our first and last key to update this for merged iterator
             match (self.first_entry.take(), iterator.first_entry()) {
@@ -62,7 +62,7 @@ impl<'a> MergedIterator<'a> {
         }
     }
 }
-impl<'a> DatabaseIterator for MergedIterator<'a> {
+impl DatabaseIterator for MergedIterator {
     fn peek(&self) -> Option<Entry<'_>> {
         self.iterators.peek()?.peek()
     }

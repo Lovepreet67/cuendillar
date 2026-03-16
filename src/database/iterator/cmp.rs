@@ -2,21 +2,21 @@ use std::cmp::Ordering;
 
 use crate::database::iterator::DatabaseIterator;
 
-impl<'a> PartialEq for Box<dyn DatabaseIterator + 'a> {
+impl PartialEq for Box<dyn DatabaseIterator> {
     fn eq(&self, other: &Self) -> bool {
         self.peek() == other.peek()
     }
 }
 
-impl<'a> Eq for Box<dyn DatabaseIterator + 'a> {}
+impl Eq for Box<dyn DatabaseIterator> {}
 
-impl<'a> PartialOrd for Box<dyn DatabaseIterator + 'a> {
+impl PartialOrd for Box<dyn DatabaseIterator> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<'a> Ord for Box<dyn DatabaseIterator + 'a> {
+impl Ord for Box<dyn DatabaseIterator> {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self.peek(), other.peek()) {
             (Some(a), Some(b)) => {

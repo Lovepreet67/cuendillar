@@ -4,7 +4,6 @@ pub mod default_wal;
 pub mod errors;
 #[cfg(test)]
 mod tests;
-pub mod wal_entry;
 
 pub const MAGIC_NUMBER: u64 = 0x123232;
 

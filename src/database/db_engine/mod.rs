@@ -14,20 +14,14 @@ use std::{
 
 use tracing::{error, info, instrument};
 
-use crate::database::{
-    Entry, OwnedEntry,
-    config::DbConfig,
-    db_engine::{errors::EngineError /*, instrumented::InstrumentedRwLock as RwLock*/},
-    factory::{
+use crate::{DatabaseIterator, database::{
+    Entry, OwnedEntry, config::DbConfig, db_engine::errors::EngineError, factory::{
         compaction::build_compaction, memtable::build_memtable_manager, wal::build_wal_manger,
-    },
-    memtable::manager::MemtableManager,
-    sstable::{
+    }, iterator::merged_iterator::MergedIterator, memtable::manager::MemtableManager, sstable::{
         cleaner::Cleaner,
         version::{ version_manager::VersionManager, version_update::VersionUpdate},
-    },
-    wal::WAL,
-};
+    }, wal::WAL
+}};
 
 pub struct Engine {
     config: Arc<DbConfig>,
@@ -251,8 +245,13 @@ impl Engine {
             None => None,
         })
     }
-    pub fn iterator(&self,start_key:Option<&[u8]>,end_key:Option<&u8>)->(){
-        return ();
+    pub fn iterator(&self,_start_key:Option<&[u8]>,_end_key:Option<&[u8]>)->Result<Box<dyn DatabaseIterator>,EngineError>{
+        let mut mi = MergedIterator::new();
+        let memtable_iter = self.memtable_manager.read()?.iter();
+        mi.add_iterator(Box::new(memtable_iter));
+        let version_iter = self.version_manager.read()?.iter()?;
+        mi.add_iterator(Box::new(version_iter));
+        Ok(Box::new(mi))
     }
     fn memtable_rotation(&mut self) -> Result<(), EngineError> {
         let uid = uuid::Uuid::new_v4();

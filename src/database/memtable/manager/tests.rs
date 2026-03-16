@@ -24,10 +24,6 @@ fn row<'a>(seq: u64, key: &'a [u8], value: &'a [u8]) -> Entry<'a> {
     }
 }
 
-fn tomb(seq: u64, key: &[u8]) -> Entry {
-    Entry::Tombstone { seq_no: seq, key }
-}
-
 fn setup_manager() -> DefaultManger {
     DefaultManger::intialize(
         Box::new(BTreeMemtable::new(None)),

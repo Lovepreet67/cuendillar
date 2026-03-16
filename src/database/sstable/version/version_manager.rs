@@ -11,6 +11,7 @@ use tracing::{info, instrument};
 use crate::database::{
     config::{DbConfig, bloom_config::BloomConfig, index_config::IndexConfig},
     factory::wal::build_wal_manger,
+    iterator::merged_iterator::MergedIterator,
     memtable::Memtable,
     sstable::{
         errors::SSTableError,
@@ -324,5 +325,8 @@ impl VersionManager {
             .send((old_version, deleted_files));
         // }
         Ok(())
+    }
+    pub fn iter(&self) -> Result<MergedIterator, SSTableError> {
+        self.version.iter()
     }
 }

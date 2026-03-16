@@ -12,6 +12,7 @@ use tracing::instrument;
 
 use crate::database::{
     OwnedEntry,
+    iterator::{DatabaseIterator, merged_iterator::MergedIterator},
     sstable::{
         errors::SSTableError,
         metadata::{
@@ -363,6 +364,17 @@ impl Version {
             levels.push(level);
         }
         Ok(Version::new(levels, comitted_wal_offset))
+    }
+    fn iter(&self) -> Result<MergedIterator, SSTableError> {
+        // for now we can create a single iterator for each sstable it will work file
+        let mut mi = MergedIterator::new();
+        for level in &self.levels {
+            for table in level {
+                let iter = table.iter()?;
+                mi.add_iterator(iter);
+            }
+        }
+        Ok(mi)
     }
 }
 

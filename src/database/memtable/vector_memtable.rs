@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use tracing::instrument;
 use uuid::Uuid;
@@ -11,6 +11,7 @@ use crate::{
         memtable::{Memtable, errors::MemtableError},
     },
 };
+#[derive(Clone)]
 pub struct VectorMemtableEntry {
     seq_no: u64,
     key: Vec<u8>,
@@ -81,6 +82,7 @@ impl<'a> From<&'a VectorMemtableEntry> for OwnedEntry {
         }
     }
 }
+#[derive(Clone)]
 pub struct VectorMemtable {
     id: Uuid,
     wal_offset: u64,
@@ -118,21 +120,24 @@ impl Memtable for VectorMemtable {
         return Ok(None);
     }
     #[instrument(name = "Vector Memetable Iter", skip(self))]
-    fn iter(&self) -> Box<dyn DatabaseIterator + '_> {
+    fn iter(&self) -> Box<dyn DatabaseIterator> {
         // we will store a copy of enteries in sorted order
         let mut seen = HashSet::new();
         let mut entries = Vec::new();
 
-        for entry in self.store.iter().rev() {
+        for (idx, entry) in self.store.iter().enumerate().rev() {
             if seen.insert(entry.key.clone()) {
-                // first time seeing this key = latest version
-                entries.push(entry);
+                entries.push(idx);
             }
         }
 
-        entries.sort_by(|a, b| a.key.cmp(&b.key));
+        entries.sort_by(|a, b| self.store[*a].key.cmp(&self.store[*b].key));
 
-        Box::new(VectorMemtableIterator { curr: 0, entries })
+        Box::new(VectorMemtableIterator {
+            memtable: Arc::new(self.clone()),
+            entries,
+            curr: 0,
+        })
     }
     fn num_enteries(&self) -> u64 {
         self.store.len() as u64
@@ -145,40 +150,38 @@ impl Memtable for VectorMemtable {
     }
 }
 
-pub(crate) struct VectorMemtableIterator<'a> {
-    entries: Vec<&'a VectorMemtableEntry>,
+pub(crate) struct VectorMemtableIterator {
+    memtable: Arc<VectorMemtable>,
+    entries: Vec<usize>,
     curr: usize,
 }
 
-impl<'a> DatabaseIterator for VectorMemtableIterator<'a> {
-    fn peek(&self) -> Option<Entry<'a>> {
-        if self.entries.len() > self.curr {
-            return Some(self.entries[self.curr].into());
-        } else {
-            None
+impl DatabaseIterator for VectorMemtableIterator {
+    fn peek(&self) -> Option<Entry<'_>> {
+        if self.curr >= self.entries.len() {
+            return None;
         }
+        let idx = self.entries[self.curr];
+        Some((&self.memtable.store[idx]).into())
     }
     fn next_owned(&mut self) -> Option<crate::OwnedEntry> {
         if self.curr >= self.entries.len() {
-            None
-        } else {
-            let e = self.entries[self.curr];
-            self.curr += 1;
-            Some(e.into())
+            return None;
         }
+
+        let idx = self.entries[self.curr];
+        self.curr += 1;
+
+        Some((&self.memtable.store[idx]).into())
     }
     fn first_entry(&self) -> Option<Entry<'_>> {
-        if self.entries.len() > 0 {
-            Some(self.entries[0].into())
-        } else {
-            None
-        }
+        self.entries
+            .first()
+            .map(|idx| (&self.memtable.store[*idx]).into())
     }
     fn last_entry(&self) -> Option<Entry<'_>> {
-        if self.entries.len() > 0 {
-            Some(self.entries[self.entries.len() - 1].into())
-        } else {
-            None
-        }
+        self.entries
+            .last()
+            .map(|idx| (&self.memtable.store[*idx]).into())
     }
 }

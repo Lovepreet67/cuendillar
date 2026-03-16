@@ -2,16 +2,18 @@ use std::{
     clone::Clone,
     fmt::Debug,
     fs::File,
-    io::{Cursor, Read, Write},
+    io::{BufReader, Cursor, Read, Take, Write},
     os::unix::fs::FileExt,
     path::PathBuf,
     sync::{Arc, OnceLock},
 };
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use tracing::error;
 
 use crate::database::{
     OwnedEntry,
+    iterator::DatabaseIterator,
     sstable::{
         errors::SSTableError,
         metadata::{bloom_filter::BloomFilter, index::SSTIndex},
@@ -207,5 +209,68 @@ impl SSTMetadata {
     }
     pub fn get_size(&self) -> u64 {
         self.footer.data_block_size + self.footer.bloom_filter_size + self.footer.index_block_size
+    }
+    pub fn iter(&self) -> Result<Box<dyn DatabaseIterator>, SSTableError> {
+        // we will get the first and last entry from the sstable
+        let first_entry = self.find(&self.key_range.first_key)?;
+        let last_entry = self.find(&self.key_range.last_key)?;
+
+        // then we will create a buff reader
+        let reader = File::options().read(true).open(&self.file_path)?;
+        // we will limit the reader to data block only
+        let data_reader = BufReader::new(reader.take(self.footer.data_block_size));
+        Ok(Box::new(SSTIterator::new(
+            first_entry,
+            last_entry,
+            data_reader,
+        )))
+    }
+}
+
+pub struct SSTIterator {
+    first_entry: Option<OwnedEntry>,
+    last_entry: Option<OwnedEntry>,
+    reader: BufReader<Take<File>>,
+    curr_entry: Option<OwnedEntry>,
+}
+
+impl SSTIterator {
+    fn decode_entry(reader: &mut BufReader<Take<File>>) -> Option<OwnedEntry> {
+        match OwnedEntry::decode(reader) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                error!("Error while reading entry during sstable iteration {:?}", e);
+                return None;
+            }
+        }
+    }
+    pub fn new(
+        first_entry: Option<OwnedEntry>,
+        last_entry: Option<OwnedEntry>,
+        mut reader: BufReader<Take<File>>,
+    ) -> Self {
+        // we will read the curr entry
+        let curr_entry = Self::decode_entry(&mut reader);
+        Self {
+            first_entry: first_entry,
+            last_entry: last_entry,
+            reader,
+            curr_entry,
+        }
+    }
+}
+
+impl DatabaseIterator for SSTIterator {
+    fn peek(&self) -> Option<crate::database::Entry<'_>> {
+        self.curr_entry.as_ref().map(|e| e.into())
+    }
+    fn next_owned(&mut self) -> Option<OwnedEntry> {
+        std::mem::replace(&mut self.curr_entry, Self::decode_entry(&mut self.reader))
+    }
+    fn first_entry(&self) -> Option<crate::database::Entry<'_>> {
+        self.first_entry.as_ref().map(|e| e.into())
+    }
+    fn last_entry(&self) -> Option<crate::database::Entry<'_>> {
+        self.last_entry.as_ref().map(|e| e.into())
     }
 }

@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, btree_map::Iter};
+use std::collections::BTreeMap;
 
 use tracing::instrument;
 use uuid::Uuid;
@@ -89,15 +89,14 @@ impl Memtable for BTreeMemtable {
         };
     }
     #[instrument(name = "BTree Memetable Iter", skip(self))]
-    fn iter(&self) -> Box<dyn DatabaseIterator + '_> {
-        let first_entry = Self::get_entry_from_btree_entry(self.store.first_key_value());
-        let last_entry = Self::get_entry_from_btree_entry(self.store.last_key_value());
-        let iterator = self.store.iter();
-        Box::new(BTreeMemtableIterator::new(
-            first_entry,
-            last_entry,
-            iterator,
-        ))
+    fn iter(&self) -> Box<dyn DatabaseIterator> {
+        let entries = self
+            .store
+            .iter()
+            // UNWRAP_SAFETY: as the values code from the btree itself is will always be Some varient
+            .map(|e| Self::get_entry_from_btree_entry_owned(Some(e)).unwrap())
+            .collect();
+        Box::new(BTreeMemtableIterator::new(entries))
     }
     fn num_enteries(&self) -> u64 {
         self.store.len() as u64
@@ -107,41 +106,44 @@ impl Memtable for BTreeMemtable {
     }
 }
 
-pub struct BTreeMemtableIterator<'a> {
-    first_entry: Option<Entry<'a>>,
-    last_entry: Option<Entry<'a>>,
-    iterator: Iter<'a, Vec<u8>, (u64, Option<Vec<u8>>)>,
-    next_entry: Option<OwnedEntry>,
+pub struct BTreeMemtableIterator {
+    entries: Vec<OwnedEntry>,
+    curr: usize,
 }
-impl<'a> BTreeMemtableIterator<'a> {
-    pub fn new(
-        first_entry: Option<Entry<'a>>,
-        last_entry: Option<Entry<'a>>,
-        mut iterator: Iter<'a, Vec<u8>, (u64, Option<Vec<u8>>)>,
-    ) -> Self {
-        let next_entry = BTreeMemtable::get_entry_from_btree_entry_owned(iterator.next());
-        Self {
-            first_entry,
-            last_entry,
-            iterator: iterator,
-            next_entry,
+impl BTreeMemtableIterator {
+    pub fn new(entries: Vec<OwnedEntry>) -> Self {
+        Self { curr: 0, entries }
+    }
+}
+impl DatabaseIterator for BTreeMemtableIterator {
+    fn next_owned(&mut self) -> Option<OwnedEntry> {
+        if self.curr >= self.entries.len() {
+            None
+        } else {
+            let e = self.entries[self.curr].clone();
+            self.curr += 1;
+            Some(e.into())
         }
     }
-}
-impl<'a> DatabaseIterator for BTreeMemtableIterator<'a> {
-    fn next_owned(&mut self) -> Option<OwnedEntry> {
-        std::mem::replace(
-            &mut self.next_entry,
-            BTreeMemtable::get_entry_from_btree_entry_owned(self.iterator.next()),
-        )
-    }
-    fn first_entry(&self) -> Option<Entry<'a>> {
-        self.first_entry.clone()
-    }
-    fn last_entry(&self) -> Option<Entry<'a>> {
-        self.last_entry.clone()
-    }
     fn peek(&self) -> Option<Entry<'_>> {
-        self.next_entry.as_ref().map(|e| e.into())
+        if self.entries.len() > self.curr {
+            return Some((&self.entries[self.curr]).into());
+        } else {
+            None
+        }
+    }
+    fn first_entry(&self) -> Option<Entry<'_>> {
+        if self.entries.len() > 0 {
+            Some((&self.entries[0]).into())
+        } else {
+            None
+        }
+    }
+    fn last_entry(&self) -> Option<Entry<'_>> {
+        if self.entries.len() > 0 {
+            Some((&self.entries[self.entries.len() - 1]).into())
+        } else {
+            None
+        }
     }
 }
