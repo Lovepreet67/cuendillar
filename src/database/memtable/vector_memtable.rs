@@ -1,13 +1,19 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::database::{
-    Entry,
-    memtable::{Memtable, MemtableIterator, errors::MemtableError},
+use crate::{
+    OwnedEntry,
+    database::{
+        Entry,
+        iterator::DatabaseIterator,
+        memtable::{Memtable, errors::MemtableError},
+    },
 };
+#[derive(Clone)]
 pub struct VectorMemtableEntry {
+    seq_no: u64,
     key: Vec<u8>,
     value: Option<Vec<u8>>,
 }
@@ -31,11 +37,13 @@ impl VectorMemtableEntry {
 impl From<Entry<'_>> for VectorMemtableEntry {
     fn from(value: Entry) -> Self {
         return match value {
-            Entry::Row { key, value } => Self {
+            Entry::Row { seq_no, key, value } => Self {
+                seq_no,
                 key: key.into(),
                 value: Some(value.into()),
             },
-            Entry::Tombstone { key } => Self {
+            Entry::Tombstone { seq_no, key } => Self {
+                seq_no,
                 key: key.into(),
                 value: None,
             },
@@ -45,15 +53,36 @@ impl From<Entry<'_>> for VectorMemtableEntry {
 impl<'a> From<&'a VectorMemtableEntry> for Entry<'a> {
     fn from(value: &'a VectorMemtableEntry) -> Self {
         if value.is_deleted() {
-            return Entry::Tombstone { key: &value.key };
+            return Entry::Tombstone {
+                seq_no: value.seq_no,
+                key: &value.key,
+            };
         } else {
             return Entry::Row {
+                seq_no: value.seq_no,
                 key: &value.key,
                 value: value.value.as_deref().unwrap(),
             };
         }
     }
 }
+impl<'a> From<&'a VectorMemtableEntry> for OwnedEntry {
+    fn from(value: &'a VectorMemtableEntry) -> Self {
+        if value.is_deleted() {
+            return OwnedEntry::Tombstone {
+                seq_no: value.seq_no,
+                key: value.key.clone(),
+            };
+        } else {
+            return OwnedEntry::Row {
+                seq_no: value.seq_no,
+                key: value.key.clone(),
+                value: value.value.clone().unwrap(),
+            };
+        }
+    }
+}
+#[derive(Clone)]
 pub struct VectorMemtable {
     id: Uuid,
     wal_offset: u64,
@@ -91,21 +120,24 @@ impl Memtable for VectorMemtable {
         return Ok(None);
     }
     #[instrument(name = "Vector Memetable Iter", skip(self))]
-    fn iter(&self) -> Box<dyn MemtableIterator<Item = Entry<'_>> + '_> {
+    fn iter(&self) -> Box<dyn DatabaseIterator> {
         // we will store a copy of enteries in sorted order
         let mut seen = HashSet::new();
         let mut entries = Vec::new();
 
-        for entry in self.store.iter().rev() {
+        for (idx, entry) in self.store.iter().enumerate().rev() {
             if seen.insert(entry.key.clone()) {
-                // first time seeing this key = latest version
-                entries.push(entry);
+                entries.push(idx);
             }
         }
 
-        entries.sort_by(|a, b| a.key.cmp(&b.key));
+        entries.sort_by(|a, b| self.store[*a].key.cmp(&self.store[*b].key));
 
-        Box::new(VectorMemtableIterator { curr: 0, entries })
+        Box::new(VectorMemtableIterator {
+            memtable: Arc::new(self.clone()),
+            entries,
+            curr: 0,
+        })
     }
     fn num_enteries(&self) -> u64 {
         self.store.len() as u64
@@ -118,36 +150,38 @@ impl Memtable for VectorMemtable {
     }
 }
 
-pub(crate) struct VectorMemtableIterator<'a> {
-    entries: Vec<&'a VectorMemtableEntry>,
+pub(crate) struct VectorMemtableIterator {
+    memtable: Arc<VectorMemtable>,
+    entries: Vec<usize>,
     curr: usize,
 }
-impl<'a> Iterator for VectorMemtableIterator<'a> {
-    type Item = Entry<'a>;
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.curr >= self.entries.len() {
-            None
-        } else {
-            let e = self.entries[self.curr];
-            self.curr += 1;
-            Some(e.into())
-        }
-    }
-}
 
-impl<'a> MemtableIterator for VectorMemtableIterator<'a> {
-    fn get_first_entry(&self) -> Option<Entry<'_>> {
-        if self.entries.len() > 0 {
-            Some(self.entries[0].into())
-        } else {
-            None
+impl DatabaseIterator for VectorMemtableIterator {
+    fn peek(&self) -> Option<Entry<'_>> {
+        if self.curr >= self.entries.len() {
+            return None;
         }
+        let idx = self.entries[self.curr];
+        Some((&self.memtable.store[idx]).into())
     }
-    fn get_last_entry(&self) -> Option<Entry<'_>> {
-        if self.entries.len() > 0 {
-            Some(self.entries[self.entries.len() - 1].into())
-        } else {
-            None
+    fn next_owned(&mut self) -> Option<crate::OwnedEntry> {
+        if self.curr >= self.entries.len() {
+            return None;
         }
+
+        let idx = self.entries[self.curr];
+        self.curr += 1;
+
+        Some((&self.memtable.store[idx]).into())
+    }
+    fn first_entry(&self) -> Option<Entry<'_>> {
+        self.entries
+            .first()
+            .map(|idx| (&self.memtable.store[*idx]).into())
+    }
+    fn last_entry(&self) -> Option<Entry<'_>> {
+        self.entries
+            .last()
+            .map(|idx| (&self.memtable.store[*idx]).into())
     }
 }

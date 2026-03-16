@@ -12,6 +12,7 @@ use tracing::instrument;
 
 use crate::database::{
     OwnedEntry,
+    iterator::{DatabaseIterator, merged_iterator::MergedIterator},
     sstable::{
         errors::SSTableError,
         metadata::{
@@ -364,6 +365,17 @@ impl Version {
         }
         Ok(Version::new(levels, comitted_wal_offset))
     }
+    fn iter(&self) -> Result<MergedIterator, SSTableError> {
+        // for now we can create a single iterator for each sstable it will work file
+        let mut mi = MergedIterator::new();
+        for level in &self.levels {
+            for table in level {
+                let iter = table.iter()?;
+                mi.add_iterator(iter);
+            }
+        }
+        Ok(mi)
+    }
 }
 
 #[cfg(test)]
@@ -383,14 +395,17 @@ mod test {
         let mut vm = VectorMemtable::new(None);
         let entities = vec![
             Entry::Row {
+                seq_no: 1,
                 key: b"id3",
                 value: b"value3",
             },
             Entry::Row {
+                seq_no: 2,
                 key: b"id2",
                 value: b"value2",
             },
             Entry::Row {
+                seq_no: 3,
                 key: b"id1",
                 value: b"value1",
             },
@@ -408,6 +423,7 @@ mod test {
             v1.find(b"id3").unwrap(),
             Some(
                 Entry::Row {
+                    seq_no: 1,
                     key: b"id3",
                     value: b"value3",
                 }
@@ -418,6 +434,7 @@ mod test {
             v1.find(b"id2").unwrap(),
             Some(
                 Entry::Row {
+                    seq_no: 2,
                     key: b"id2",
                     value: b"value2",
                 }
@@ -431,14 +448,17 @@ mod test {
         let mut vm = VectorMemtable::new(None);
         let entities1 = vec![
             Entry::Row {
+                seq_no: 1,
                 key: b"id3",
                 value: b"value3",
             },
             Entry::Row {
+                seq_no: 2,
                 key: b"id2",
                 value: b"value2",
             },
             Entry::Row {
+                seq_no: 3,
                 key: b"id1",
                 value: b"value1",
             },
@@ -465,10 +485,12 @@ mod test {
         // version_manager.push_l0_update(v1, vm.get_wal_offset());
         let entities2 = vec![
             Entry::Row {
+                seq_no: 4,
                 key: b"id3",
                 value: b"2value3",
             },
             Entry::Row {
+                seq_no: 5,
                 key: b"id2",
                 value: b"2value2",
             },
@@ -495,6 +517,7 @@ mod test {
             version.find(b"id3").unwrap(),
             Some(
                 Entry::Row {
+                    seq_no: 4,
                     key: b"id3",
                     value: b"2value3",
                 }
@@ -505,6 +528,7 @@ mod test {
             version.find(b"id1").unwrap(),
             Some(
                 Entry::Row {
+                    seq_no: 3,
                     key: b"id1",
                     value: b"value1",
                 }

@@ -2,7 +2,10 @@ use std::{collections::VecDeque, sync::Arc};
 
 use tracing::instrument;
 
-use crate::database::memtable::{Memtable, errors::MemtableError, manager::MemtableManager};
+use crate::database::{
+    iterator::merged_iterator::MergedIterator,
+    memtable::{Memtable, errors::MemtableError, manager::MemtableManager},
+};
 
 pub struct DefaultManger {
     active_memtable: Box<dyn Memtable>,
@@ -64,8 +67,16 @@ impl MemtableManager for DefaultManger {
         self.immutable_memtables.push_front(current_active_memtable);
         Ok(())
     }
-    fn iter(&self) -> Box<dyn std::iter::Iterator<Item = crate::database::Entry<'_>> + '_> {
-        Box::new(self.active_memtable.iter())
+    fn iter(&self) -> MergedIterator {
+        // we will create all the iterators for tables and push them to merge iterator
+        let mut mi = MergedIterator::new();
+        // now we will push the iterators one by one
+        mi.add_iterator(self.active_memtable.iter());
+        for table in &self.immutable_memtables {
+            mi.add_iterator(table.iter());
+        }
+        mi
+        // Box::new(self.active_memtable.iter())
     }
     fn require_rotation(&self) -> bool {
         self.active_memtable.size() > self.max_size * 1000_000 // as max size in MB and size is in Bytes

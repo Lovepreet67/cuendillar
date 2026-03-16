@@ -75,8 +75,8 @@ impl LevelCompaction {
 
         let mut bytes_encoded = 0;
         let mut byte_encoded_since_last_index = self.index_config.index_block_min_size as u64;
-        let first_key = enteries[0].get_id().into();
-        let last_key = enteries[enteries.len() - 1].get_id().into();
+        let first_key = enteries[0].get_key().into();
+        let last_key = enteries[enteries.len() - 1].get_key().into();
         for i in enteries {
             let i = Entry::from(i);
             // check if entry is eligible for entry
@@ -148,12 +148,12 @@ impl LevelCompaction {
         let (mut iter1, mut iter2) = (list1.into_iter(), list2.into_iter());
         let (mut e1, mut e2) = (iter1.next(), iter2.next());
         while let (Some(v1), Some(v2)) = (&e1, &e2) {
-            if v1.get_id() == v2.get_id() {
+            if v1.get_key() == v2.get_key() {
                 // we will give list1 priority
                 updated_enteries.push(e1.take().unwrap());
                 e1 = iter1.next();
                 e2 = iter2.next();
-            } else if v1.get_id() < v2.get_id() {
+            } else if v1.get_key() < v2.get_key() {
                 updated_enteries.push(e1.take().unwrap());
                 e1 = iter1.next();
             } else {
@@ -186,9 +186,9 @@ impl LevelCompaction {
         info!("Total tables in level {} is {}", level, ln_tables.len());
         // we will find the table in which we entries are overlaping
         // TODO: Avoid this allocation
-        let mut first_key = enteries[0].get_id().into();
+        let mut first_key = enteries[0].get_key().into();
         // Assumtion: enteries contain always items >1
-        let mut last_key = enteries[enteries.len() - 1].get_id().into();
+        let mut last_key = enteries[enteries.len() - 1].get_key().into();
 
         let mut curr_index = 0;
 
@@ -207,9 +207,9 @@ impl LevelCompaction {
                 // we have two list both sorted and
                 enteries = Self::merge(enteries, table.item_list()?);
                 // first and last key will change after merging the enteries;
-                first_key = enteries[0].get_id().into();
+                first_key = enteries[0].get_key().into();
                 // Assumtion: enteries contain always items >1
-                last_key = enteries[enteries.len() - 1].get_id().into();
+                last_key = enteries[enteries.len() - 1].get_key().into();
             }
             // else if the last key of enteris is smaller than current table it means the entries sstable should be in front of current
             else if enteries.len() > 0 && table.key_range.first_key > last_key {
@@ -221,7 +221,7 @@ impl LevelCompaction {
                         .into_iter()
                         .filter(|entry| {
                             return match entry {
-                                OwnedEntry::Tombstone { key: _ } => false,
+                                OwnedEntry::Tombstone { seq_no: _, key: _ } => false,
                                 _ => true,
                             };
                         })
@@ -316,7 +316,7 @@ impl Compaction for LevelCompaction {
                     .item_list()
                     .expect("Error while getting item list for table")
                 {
-                    if key_seen.insert(item.get_id().into()) {
+                    if key_seen.insert(item.get_key().into()) {
                         filterd_entries.push(item);
                     }
                 }
@@ -324,7 +324,7 @@ impl Compaction for LevelCompaction {
             })
             .flatten()
             .collect::<Vec<OwnedEntry>>();
-        merged_enteries.sort_by(|a, b| a.get_id().cmp(&b.get_id()));
+        merged_enteries.sort_by(|a, b| a.get_key().cmp(&b.get_key()));
         info!(
             "Merged all l0 tables in total entries : {}",
             merged_enteries.len()

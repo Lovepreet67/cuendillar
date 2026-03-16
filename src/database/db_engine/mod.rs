@@ -14,20 +14,14 @@ use std::{
 
 use tracing::{error, info, instrument};
 
-use crate::database::{
-    Entry, OwnedEntry,
-    config::DbConfig,
-    db_engine::{errors::EngineError /*, instrumented::InstrumentedRwLock as RwLock*/},
-    factory::{
+use crate::{DatabaseIterator, database::{
+    Entry, OwnedEntry, config::DbConfig, db_engine::errors::EngineError, factory::{
         compaction::build_compaction, memtable::build_memtable_manager, wal::build_wal_manger,
-    },
-    memtable::manager::MemtableManager,
-    sstable::{
+    }, iterator::merged_iterator::MergedIterator, memtable::manager::MemtableManager, sstable::{
         cleaner::Cleaner,
         version::{ version_manager::VersionManager, version_update::VersionUpdate},
-    },
-    wal::WAL,
-};
+    }, wal::WAL
+}};
 
 pub struct Engine {
     config: Arc<DbConfig>,
@@ -205,7 +199,7 @@ impl Engine {
         Ok(engine)
     }
     #[instrument(name="Engine Write",skip(self))]
-    pub fn write(&mut self, e: Entry) -> Result<(), EngineError> {
+    pub fn write(&mut self, key:&[u8],value:&[u8]) -> Result<u64, EngineError> {
         if self.memtable_manager.read(
             // "Checking if the rotaion is required"
         )?.require_rotation() {
@@ -220,16 +214,19 @@ impl Engine {
             }
         }
 
+        let mut wal_manager = self.wal_manager.write()?;
+        let seq_no = wal_manager.get_offset();
+        let e = Entry::from_key_value(seq_no, key, value);
         let mut payload = Vec::new();
         e.encode(&mut payload)?;
-        let wal_offset = self.wal_manager.write(
-            // "During write"
-            )?.append_log(&payload)?;
+        let wal_offset = wal_manager.append_log(&payload)?;
+        drop(wal_manager);
+        
         self.memtable_manager.write(
             // "During Writing"
             )?.insert(e, wal_offset)?;
         self.write_count += 1;
-        Ok(())
+        Ok(seq_no)
     }
     #[instrument(name="Engine Find",skip(self))]
     pub fn find(&self, key: &[u8]) -> Result<Option<OwnedEntry>, EngineError> {
@@ -248,7 +245,15 @@ impl Engine {
             None => None,
         })
     }
-    pub fn memtable_rotation(&mut self) -> Result<(), EngineError> {
+    pub fn iterator(&self,_start_key:Option<&[u8]>,_end_key:Option<&[u8]>)->Result<Box<dyn DatabaseIterator>,EngineError>{
+        let mut mi = MergedIterator::new();
+        let memtable_iter = self.memtable_manager.read()?.iter();
+        mi.add_iterator(Box::new(memtable_iter));
+        let version_iter = self.version_manager.read()?.iter()?;
+        mi.add_iterator(Box::new(version_iter));
+        Ok(Box::new(mi))
+    }
+    fn memtable_rotation(&mut self) -> Result<(), EngineError> {
         let uid = uuid::Uuid::new_v4();
         self.memtable_manager.write(
             // "During rotation"

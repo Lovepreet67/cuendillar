@@ -208,8 +208,12 @@ pub fn execute_op(db: &mut Database, op: Operation) {
         Operation::Get(key) => {
             db.get(&key).unwrap();
         }
-        Operation::Del(key) => db.delete(&key).unwrap(),
-        Operation::Put(key, value) => db.put(&key, &value).unwrap(),
+        Operation::Del(key) => {
+            db.delete(&key).unwrap();
+        }
+        Operation::Put(key, value) => {
+            db.put(&key, &value).unwrap();
+        }
     };
 }
 

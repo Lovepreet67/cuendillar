@@ -5,10 +5,8 @@ pub use crate::database::config::{
     self, DbConfig, bloom_config, cleaner_config, compaction_config, config_error, index_config,
     memtable_config, version_manager_config, wal_config,
 };
-use crate::database::{
-    Entry,
-    db_engine::{Engine, errors::EngineError},
-};
+use crate::database::db_engine::{Engine, errors::EngineError};
+pub use crate::database::iterator::DatabaseIterator;
 
 mod database;
 /// Public database handle.
@@ -94,9 +92,8 @@ impl Database {
     /// # Errors
     ///
     /// Returns `EngineError` if the write fails due to WAL or storage errors.
-    pub fn put(&self, key: &[u8], value: &[u8]) -> Result<(), EngineError> {
-        let e = Entry::Row { key, value };
-        self.db.write()?.write(e)
+    pub fn put(&self, key: &[u8], value: &[u8]) -> Result<u64, EngineError> {
+        self.db.write()?.write(key, value)
     }
     /// Deletes a key from the database.
     ///
@@ -113,8 +110,60 @@ impl Database {
     /// # Errors
     ///
     /// Returns `EngineError` if the delete operation fails.
-    pub fn delete(&self, key: &[u8]) -> Result<(), EngineError> {
-        let e = Entry::Tombstone { key };
-        self.db.write()?.write(e)
+    pub fn delete(&self, key: &[u8]) -> Result<u64, EngineError> {
+        self.db.write()?.write(key, &[])
+    }
+
+    /// Creates an iterator over a range of keys in the database.
+    ///
+    /// This method provides a unified view of the database by merging entries
+    /// from the active memtable and all on-disk SSTables. Internally it constructs
+    /// a `MergedIterator` that yields entries in **sorted key order**.
+    ///
+    /// The iterator reflects the most recent visible version of each key,
+    /// resolving duplicates across memtables and SSTables according to
+    /// sequence numbers.
+    ///
+    /// # Arguments
+    ///
+    /// * `start_key` - Optional lower bound of the iteration range (inclusive).
+    ///   If `None`, iteration starts from the smallest key in the database.
+    ///
+    /// * `end_key` - Optional upper bound of the iteration range (exclusive).
+    ///   If `None`, iteration continues until the largest key in the database.
+    ///
+    /// # Locking Behavior
+    ///
+    /// This function briefly acquires a **read lock** on the underlying engine
+    /// in order to construct the iterator. The lock is released immediately
+    /// after the iterator is created, allowing concurrent reads and writes
+    /// to proceed while iteration continues.
+    ///
+    /// # Returns
+    ///
+    /// Returns a [`MergedIterator`] that can be used to sequentially scan
+    /// the requested key range.
+    ///
+    /// # Errors
+    ///
+    /// Returns `EngineError` if the iterator cannot be constructed due to
+    /// internal engine failures.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let mut iter = db.iter(None, None)?;
+    ///
+    /// while let Some(entry) = iter.next_owned() {
+    ///     println!("{:?}", entry);
+    /// }
+    /// ```
+    pub fn iter(
+        &self,
+        start_key: Option<&[u8]>,
+        end_key: Option<&[u8]>,
+    ) -> Result<Box<dyn DatabaseIterator>, EngineError> {
+        let engine = self.db.read()?;
+        engine.iterator(start_key, end_key)
     }
 }

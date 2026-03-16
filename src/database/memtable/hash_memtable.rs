@@ -3,15 +3,15 @@ use std::collections::HashMap;
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::database::{
-    Entry,
-    memtable::{Memtable, MemtableIterator},
+use crate::{
+    OwnedEntry,
+    database::{Entry, iterator::DatabaseIterator, memtable::Memtable},
 };
 
 /// NOT PERFORMING GOOD
 pub struct HashMetable {
     id: Uuid,
-    store: HashMap<Vec<u8>, Option<Vec<u8>>>,
+    store: HashMap<Vec<u8>, (u64, Option<Vec<u8>>)>,
     curr_size: u64,
     wal_offset: u64,
 }
@@ -25,11 +25,34 @@ impl HashMetable {
         }
     }
     fn get_entry_from_hashtable_entry<'a>(
-        hashtable_entry: Option<(&'a Vec<u8>, &'a Option<Vec<u8>>)>,
+        hashtable_entry: Option<(&'a Vec<u8>, &'a (u64, Option<Vec<u8>>))>,
     ) -> Option<Entry<'a>> {
         match hashtable_entry {
-            Some((key, Some(value))) => Some(Entry::Row { key, value }),
-            Some((key, None)) => Some(Entry::Tombstone { key }),
+            Some((key, (seq_no, Some(value)))) => Some(Entry::Row {
+                seq_no: *seq_no,
+                key,
+                value,
+            }),
+            Some((key, (seq_no, None))) => Some(Entry::Tombstone {
+                seq_no: *seq_no,
+                key,
+            }),
+            None => None,
+        }
+    }
+    fn get_Owned_entry_from_hashtable_entry<'a>(
+        hashtable_entry: Option<(&'a Vec<u8>, &'a (u64, Option<Vec<u8>>))>,
+    ) -> Option<OwnedEntry> {
+        match hashtable_entry {
+            Some((key, (seq_no, Some(value)))) => Some(OwnedEntry::Row {
+                seq_no: *seq_no,
+                key: key.clone(),
+                value: value.clone(),
+            }),
+            Some((key, (seq_no, None))) => Some(OwnedEntry::Tombstone {
+                seq_no: *seq_no,
+                key: key.clone(),
+            }),
             None => None,
         }
     }
@@ -55,23 +78,23 @@ impl Memtable for HashMetable {
     fn insert(&mut self, e: crate::database::Entry, wal_offset: u64) {
         self.wal_offset = wal_offset;
         match e {
-            Entry::Row { key, value } => {
-                self.store.insert(key.into(), Some(value.into()));
+            Entry::Row { seq_no, key, value } => {
+                self.store.insert(key.into(), (seq_no, Some(value.into())));
                 self.curr_size += key.len() as u64;
                 self.curr_size += value.len() as u64;
             }
-            Entry::Tombstone { key } => {
-                self.store.insert(key.into(), None);
+            Entry::Tombstone { seq_no, key } => {
+                self.store.insert(key.into(), (seq_no, None));
                 self.curr_size += key.len() as u64;
             }
         };
     }
     #[instrument(name = "Hash Memetable Iter", skip(self))]
-    fn iter(&self) -> Box<dyn super::MemtableIterator<Item = crate::database::Entry<'_>> + '_> {
-        let mut entries: Vec<Entry<'_>> = self
+    fn iter(&self) -> Box<dyn DatabaseIterator> {
+        let mut entries: Vec<OwnedEntry> = self
             .store
             .iter()
-            .map(|item| Self::get_entry_from_hashtable_entry(Some(item)).unwrap())
+            .map(|item| Self::get_Owned_entry_from_hashtable_entry(Some(item)).unwrap())
             .collect();
         entries.sort_by(|a, b| a.get_key().cmp(&b.get_key()));
         Box::new(HashMetableIterator { entries, curr: 0 })
@@ -85,13 +108,13 @@ impl Memtable for HashMetable {
     }
 }
 
-pub(crate) struct HashMetableIterator<'a> {
-    entries: Vec<Entry<'a>>,
+pub(crate) struct HashMetableIterator {
+    entries: Vec<OwnedEntry>,
     curr: usize,
 }
-impl<'a> Iterator for HashMetableIterator<'a> {
-    type Item = Entry<'a>;
-    fn next(&mut self) -> Option<Self::Item> {
+
+impl DatabaseIterator for HashMetableIterator {
+    fn next_owned(&mut self) -> Option<OwnedEntry> {
         if self.curr >= self.entries.len() {
             None
         } else {
@@ -100,19 +123,23 @@ impl<'a> Iterator for HashMetableIterator<'a> {
             Some(e.into())
         }
     }
-}
-
-impl<'a> MemtableIterator for HashMetableIterator<'a> {
-    fn get_first_entry(&self) -> Option<Entry<'_>> {
-        if self.entries.len() > 0 {
-            Some(self.entries[0].clone())
+    fn peek(&self) -> Option<Entry<'_>> {
+        if self.entries.len() > self.curr {
+            return Some((&self.entries[self.curr]).into());
         } else {
             None
         }
     }
-    fn get_last_entry(&self) -> Option<Entry<'_>> {
+    fn first_entry(&self) -> Option<Entry<'_>> {
         if self.entries.len() > 0 {
-            Some(self.entries[self.entries.len() - 1].clone())
+            Some((&self.entries[0]).into())
+        } else {
+            None
+        }
+    }
+    fn last_entry(&self) -> Option<Entry<'_>> {
+        if self.entries.len() > 0 {
+            Some((&self.entries[self.entries.len() - 1]).into())
         } else {
             None
         }

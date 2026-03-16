@@ -45,15 +45,24 @@ pub fn execute_op(db: &Database, op: Operation) {
         Operation::Get(key, hit, value) => {
             let x = db.get(&key).unwrap();
             if !hit {
-                if x.is_some() {
-                    assert_eq!(x, Some(OwnedEntry::Tombstone { key }));
+                if let Some(x) = x {
+                    assert!(x.is_equal(&OwnedEntry::Tombstone { seq_no: 0, key }));
                 }
             } else {
-                assert_eq!(x, Some(OwnedEntry::Row { key, value }))
+                let x = x.unwrap();
+                assert!(x.is_equal(&OwnedEntry::Row {
+                    seq_no: 1,
+                    key,
+                    value
+                }));
             }
         }
-        Operation::Del(key) => db.delete(&key).unwrap(),
-        Operation::Put(key, value) => db.put(&key, &value).unwrap(),
+        Operation::Del(key) => {
+            db.delete(&key).unwrap();
+        }
+        Operation::Put(key, value) => {
+            db.put(&key, &value).unwrap();
+        }
     };
 }
 #[test]
@@ -116,6 +125,78 @@ pub fn db_controlled_recovery_test() {
         execute_op(db.as_mut().unwrap(), op);
         counter += 1;
     }
+    drop(db);
+    remove_dir_all(&config.root_dir).unwrap();
+}
+
+use std::collections::BTreeMap;
+
+#[test]
+pub fn db_iterator_full_scan_test() {
+    let config = DbConfig::get_config().unwrap();
+
+    let db = Database::new(config.clone()).unwrap();
+
+    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "100k".to_owned());
+    let active_workload_file = format!("workload/{}.txt", active_workload);
+
+    println!("Active workload is set to {}", active_workload);
+
+    let file = File::open(&active_workload_file).unwrap();
+    let reader = BufReader::new(file);
+
+    // Ground truth state
+    let mut expected: BTreeMap<Vec<u8>, Option<Vec<u8>>> = BTreeMap::new();
+
+    for line in reader.lines() {
+        let op = get_operation(&line.unwrap());
+
+        match &op {
+            Operation::Put(k, v) => {
+                expected.insert(k.clone(), Some(v.clone()));
+            }
+            Operation::Del(k) => {
+                expected.insert(k.clone(), None);
+            }
+            Operation::Get(_, _, _) => {}
+        }
+
+        execute_op(&db, op);
+    }
+
+    // Collect iterator output
+    let mut iter = db.iter(None, None).unwrap();
+
+    let mut results = Vec::new();
+
+    while let Some(entry) = iter.next_owned() {
+        results.push(entry);
+    }
+
+    // Build expected entries
+    let mut expected_entries = Vec::new();
+
+    for (k, v) in expected {
+        match v {
+            Some(value) => {
+                expected_entries.push(OwnedEntry::Row {
+                    seq_no: 1,
+                    key: k,
+                    value,
+                });
+            }
+            None => {
+                expected_entries.push(OwnedEntry::Tombstone { seq_no: 0, key: k });
+            }
+        }
+    }
+
+    assert_eq!(results.len(), expected_entries.len());
+
+    for (a, b) in results.iter().zip(expected_entries.iter()) {
+        assert!(a.is_equal(b));
+    }
+
     drop(db);
     remove_dir_all(&config.root_dir).unwrap();
 }

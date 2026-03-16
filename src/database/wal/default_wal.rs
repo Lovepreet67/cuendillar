@@ -274,6 +274,9 @@ impl WAL for DefaultWAL {
         }
         return Ok(());
     }
+    fn get_offset(&self) -> u64 {
+        self.curr_offset
+    }
 }
 
 pub struct DefaultWALIterator {
