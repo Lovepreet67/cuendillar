@@ -234,7 +234,8 @@ pub fn run(workload: &str, file: &str) {
 fn main() {
     tracing_subscriber::fmt()
         .with_env_filter("debug")
-        .try_init();
+        .try_init()
+        .unwrap();
     let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "10k".to_owned());
     let active_workload_file = format!("workload/{}.txt", active_workload);
     run(&active_workload, &active_workload_file);

@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, ops::Bound};
 
 use tracing::instrument;
 use uuid::Uuid;
@@ -89,10 +89,20 @@ impl Memtable for BTreeMemtable {
         };
     }
     #[instrument(name = "BTree Memetable Iter", skip(self))]
-    fn iter(&self) -> Box<dyn DatabaseIterator> {
+    fn iter(&self, start_key: Option<&[u8]>, end_key: Option<&[u8]>) -> Box<dyn DatabaseIterator> {
+        let start_bound = match start_key {
+            Some(k) => Bound::Included(k),
+            None => Bound::Unbounded,
+        };
+
+        let end_bound = match end_key {
+            Some(k) => Bound::Included(k),
+            None => Bound::Unbounded,
+        };
+
         let entries = self
             .store
-            .iter()
+            .range::<[u8], _>((start_bound, end_bound))
             // UNWRAP_SAFETY: as the values code from the btree itself is will always be Some varient
             .map(|e| Self::get_entry_from_btree_entry_owned(Some(e)).unwrap())
             .collect();

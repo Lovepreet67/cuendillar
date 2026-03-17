@@ -94,9 +94,11 @@ impl VersionUpdate {
     pub fn add_operation(&mut self, op: VersionOperation) {
         self.operations.push(op);
     }
+    #[allow(unused)]
     pub fn get_operations(&self) -> &Vec<VersionOperation> {
         &self.operations
     }
+    #[allow(unused)]
     pub fn clear(&mut self) {
         self.operations.clear();
     }

@@ -1,18 +1,10 @@
-use std::{
-    collections::HashSet,
-    fmt::Debug,
-    fs::File,
-    io::{Read, Seek, Write},
-    path::Path,
-    sync::OnceLock,
-};
+use std::{collections::HashSet, fmt::Debug, fs::File, io::Seek, path::Path, sync::OnceLock};
 
-use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use tracing::instrument;
 
 use crate::database::{
     OwnedEntry,
-    iterator::{DatabaseIterator, merged_iterator::MergedIterator},
+    iterator::merged_iterator::MergedIterator,
     sstable::{
         errors::SSTableError,
         metadata::{
@@ -54,28 +46,12 @@ impl Version {
     pub fn get_commited_wal_offset(&self) -> u64 {
         self.commited_wal_offset
     }
-    pub fn add_l0_table(mut self, table: SSTMetadata, commited_wal_offset: u64) -> Self {
-        if self.levels.len() > 0 {
-            self.levels[0].push(table);
-        } else {
-            self.levels.push(vec![table]);
-        }
-        self.commited_wal_offset = commited_wal_offset;
-        self
-    }
     /// INDEX_SAFETY: This function is used by compaction which will only run if the tables in l0 is > 0
     pub fn get_level_tables(&self, level: usize) -> Option<&Vec<SSTMetadata>> {
         if self.levels.len() <= level {
             None
         } else {
             Some(&self.levels[level])
-        }
-    }
-    pub fn get_level_tables_owned(&mut self, level: usize) -> Option<Vec<SSTMetadata>> {
-        if self.levels.len() <= level {
-            None
-        } else {
-            Some(std::mem::take(&mut self.levels[level]))
         }
     }
     #[instrument(name = "Version Find", skip(self))]
@@ -197,29 +173,6 @@ impl Version {
         self.commited_wal_offset = wal_offset;
         Ok(())
     }
-    pub fn encode(&self, writer: &mut impl Write) -> Result<u64, SSTableError> {
-        let mut bytes_written: u64 = 0;
-        // write last commited offset
-        writer.write_u64::<BigEndian>(self.commited_wal_offset)?;
-        bytes_written += 8;
-        // then number of levels as u16
-        writer.write_u16::<BigEndian>(self.levels.len() as u16)?;
-        bytes_written += 2;
-
-        // then we will encode each level
-        for i in 0..self.levels.len() {
-            // number of tables in this version
-            writer.write_u64::<BigEndian>(self.levels[i].len() as u64)?;
-            bytes_written += 8;
-
-            for table in &self.levels[i] {
-                // as uuid is 16 bytes long
-                writer.write(table.id.as_bytes())?;
-                bytes_written += 16;
-            }
-        }
-        Ok(bytes_written)
-    }
     // this function will convert all the add to add with sstmetadata
     #[instrument(name = "Normalize Version Update Operation", skip(update, root_dir))]
     pub fn normalize_version_update_operation(
@@ -315,62 +268,32 @@ impl Version {
         }
         Ok(())
     }
-    pub fn decode(reader: &mut impl Read, root_dir: &Path) -> Result<Version, SSTableError> {
-        // read last commited offset
-        let comitted_wal_offset = reader.read_u64::<BigEndian>()?;
-
-        // then number of levels as u16
-        let level_count = reader.read_u16::<BigEndian>()?;
-        let mut levels = Vec::with_capacity(level_count as usize);
-        // then we will encode each level
-        let mut id_bytes = [0u8; 16];
-        for i in 0..level_count {
-            // number of tables in this version
-            let i_level_len = reader.read_u64::<BigEndian>()?;
-            let mut level = Vec::with_capacity(i_level_len as usize);
-            for _table_index in 0..i_level_len {
-                // as uuid is 16 bytes long
-                reader.read_exact(&mut id_bytes)?;
-                let table_id = uuid::Uuid::from_bytes(id_bytes);
-                // now we have table id we need to get SSTmeta for this
-                let table_file_path = root_dir.join(format!("l{}/{}", i, table_id));
-                // read the file to decode bloom,index, footer and (first,last) keys
-                let mut table = File::open(&table_file_path)?;
-                // 1. first we will read the footer
-                table.seek(std::io::SeekFrom::End(-32))?; // as footer size is fixed for 
-                let table_footer = SSTableFooter::deserialize(&mut table)?;
-                // now we have all offsets we will try to deserialize bloom and index
-                // deserilizing bloom
-                table.seek(std::io::SeekFrom::Start(table_footer.data_block_size))?;
-                // now the file pointer is on the bloom filter start
-                let bloom = BloomFactory::deserialize_bloom_filter(&mut table)?;
-                // now the pointer will be at index block start
-                let index = IndexFactory::deserialize_index(&mut table)?;
-                // now we will deserialize the key range
-                let key_range = SSTableKeyRange::deserialize(&mut table)?;
-
-                let sst_meta = SSTMetadata::new(
-                    table_id,
-                    bloom.into(),
-                    index.into(),
-                    key_range.first_key,
-                    key_range.last_key,
-                    OnceLock::new(), // we will not be storing the open FD here
-                    table_file_path,
-                    table_footer,
-                );
-                level.push(sst_meta);
-            }
-            levels.push(level);
-        }
-        Ok(Version::new(levels, comitted_wal_offset))
-    }
-    fn iter(&self) -> Result<MergedIterator, SSTableError> {
-        // for now we can create a single iterator for each sstable it will work file
+    fn iter(
+        &self,
+        start_key: Option<&[u8]>,
+        end_key: Option<&[u8]>,
+    ) -> Result<MergedIterator, SSTableError> {
         let mut mi = MergedIterator::new();
+        // returns true if the sstable lie in the specified range
+        fn overlaps(table: &SSTMetadata, start: Option<&[u8]>, end: Option<&[u8]>) -> bool {
+            if let Some(start_key) = start {
+                if table.key_range.last_key.as_slice() < start_key {
+                    return false;
+                }
+            }
+            if let Some(end_key) = end {
+                if table.key_range.first_key.as_slice() > end_key {
+                    return false;
+                }
+            }
+            true
+        }
         for level in &self.levels {
             for table in level {
-                let iter = table.iter()?;
+                if !overlaps(table, start_key, end_key) {
+                    break; // safe because sorted & non-overlapping
+                }
+                let iter = table.iter(start_key, end_key)?;
                 mi.add_iterator(iter);
             }
         }

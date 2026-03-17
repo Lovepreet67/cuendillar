@@ -146,3 +146,56 @@ pub fn run_readrandom(
         hist,
     }
 }
+pub fn run_iterator_scan(
+    db: &mut Database,
+    scans: u64,
+    key_space: u64,
+    key_size: usize,
+    seed: u64,
+) -> PhaseResult {
+    let mut rng = Mt19937_64::new(seed);
+
+    let mut start_key_buf = vec![0u8; key_size];
+    let mut end_key_buf = vec![0u8; key_size];
+
+    let mut hist = Histogram::new(3).expect("histogram init");
+    let mut total_entries = 0u64;
+
+    // size of iterator which will be created
+    let scan_range = 10000;
+
+    let started = Instant::now();
+
+    for _ in 0..scans {
+        // pick random start key
+        let start_rand = rng.next_u64() % key_space;
+
+        // define end key (bounded range)
+        let end_rand = (start_rand + scan_range).min(key_space);
+
+        generate_key_from_int(start_rand, &mut start_key_buf);
+        generate_key_from_int(end_rand, &mut end_key_buf);
+
+        let mut iter = db
+            .iter(Some(&start_key_buf), Some(&end_key_buf))
+            .expect("iterator creation failed");
+
+        let scan_started = Instant::now();
+
+        while let Some(_entry) = iter.next_owned() {
+            total_entries += 1;
+        }
+
+        let micros = scan_started.elapsed().as_micros() as u64;
+        hist.record(micros).expect("hist record");
+    }
+
+    PhaseResult {
+        timestamp: Instant::now(),
+        name: "iteratorscan".to_string(),
+        ops: scans,
+        elapsed: started.elapsed(),
+        found: Some(total_entries),
+        hist,
+    }
+}

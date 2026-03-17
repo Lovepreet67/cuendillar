@@ -163,6 +163,14 @@ impl Database {
         start_key: Option<&[u8]>,
         end_key: Option<&[u8]>,
     ) -> Result<Box<dyn DatabaseIterator>, EngineError> {
+        match (start_key, end_key) {
+            (Some(start), Some(end)) => {
+                if start > end {
+                    return Err(EngineError::InvalidRange);
+                }
+            }
+            _ => {}
+        };
         let engine = self.db.read()?;
         engine.iterator(start_key, end_key)
     }

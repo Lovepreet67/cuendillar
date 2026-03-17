@@ -67,13 +67,13 @@ impl MemtableManager for DefaultManger {
         self.immutable_memtables.push_front(current_active_memtable);
         Ok(())
     }
-    fn iter(&self) -> MergedIterator {
+    fn iter(&self, start_key: Option<&[u8]>, end_key: Option<&[u8]>) -> MergedIterator {
         // we will create all the iterators for tables and push them to merge iterator
         let mut mi = MergedIterator::new();
         // now we will push the iterators one by one
-        mi.add_iterator(self.active_memtable.iter());
+        mi.add_iterator(self.active_memtable.iter(start_key, end_key));
         for table in &self.immutable_memtables {
-            mi.add_iterator(table.iter());
+            mi.add_iterator(table.iter(start_key, end_key));
         }
         mi
         // Box::new(self.active_memtable.iter())

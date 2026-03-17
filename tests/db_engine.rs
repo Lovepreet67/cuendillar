@@ -200,3 +200,90 @@ pub fn db_iterator_full_scan_test() {
     drop(db);
     remove_dir_all(&config.root_dir).unwrap();
 }
+
+#[test]
+pub fn db_iterator_range_test() {
+    let config = DbConfig::get_config().unwrap();
+    let db = Database::new(config.clone()).unwrap();
+
+    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "100k".to_owned());
+    let active_workload_file = format!("workload/{}.txt", active_workload);
+
+    let file = File::open(&active_workload_file).unwrap();
+    let reader = BufReader::new(file);
+
+    let mut expected: BTreeMap<Vec<u8>, Option<Vec<u8>>> = BTreeMap::new();
+
+    for line in reader.lines() {
+        let op = get_operation(&line.unwrap());
+
+        match &op {
+            Operation::Put(k, v) => {
+                expected.insert(k.clone(), Some(v.clone()));
+            }
+            Operation::Del(k) => {
+                expected.insert(k.clone(), None);
+            }
+            Operation::Get(_, _, _) => {}
+        }
+
+        execute_op(&db, op);
+    }
+
+    // -------- Define range --------
+    let ranges = [
+        (b"key000000".to_vec(), b"key005000".to_vec()), // both key exist
+        (b"key000000".to_vec(), b"zey005000".to_vec()), // start key exist
+        (b"aey000000".to_vec(), b"key005000".to_vec()), // end key exist
+        (b"aey000000".to_vec(), b"zey005000".to_vec()), // both not exist
+        (b"aey000000".to_vec(), b"cey005000".to_vec()), // no key in range
+    ];
+    for range in ranges {
+        let start_key = range.0;
+        let end_key = range.1;
+        let mut iter = db.iter(Some(&start_key), Some(&end_key)).unwrap();
+
+        let mut results = Vec::new();
+        while let Some(entry) = iter.next_owned() {
+            results.push(entry);
+        }
+
+        // -------- Build expected --------
+        let mut expected_entries = Vec::new();
+
+        for (k, v) in expected.range(start_key.clone()..=end_key.clone()) {
+            match v {
+                Some(value) => {
+                    expected_entries.push(OwnedEntry::Row {
+                        seq_no: 1,
+                        key: k.clone(),
+                        value: value.clone(),
+                    });
+                }
+                None => {
+                    expected_entries.push(OwnedEntry::Tombstone {
+                        seq_no: 0,
+                        key: k.clone(),
+                    });
+                }
+            }
+        }
+        for i in 1..results.len() {
+            assert!(
+                results[i - 1].get_key() <= results[i].get_key(),
+                "Iterator is not sorted at index {}: {:?} > {:?}",
+                i,
+                results[i - 1].get_key(),
+                results[i].get_key()
+            );
+        }
+        assert_eq!(results.len(), expected_entries.len());
+
+        for (a, b) in results.iter().zip(expected_entries.iter()) {
+            assert!(a.is_equal(b));
+        }
+    }
+
+    drop(db);
+    remove_dir_all(&config.root_dir).unwrap();
+}

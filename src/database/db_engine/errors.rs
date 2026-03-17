@@ -10,6 +10,7 @@ pub enum EngineError {
     Internal(String),
     PosionError,
     IoError(std::io::Error),
+    InvalidRange,
 }
 
 impl From<MemtableError> for EngineError {

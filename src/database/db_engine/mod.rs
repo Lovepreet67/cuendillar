@@ -245,11 +245,11 @@ impl Engine {
             None => None,
         })
     }
-    pub fn iterator(&self,_start_key:Option<&[u8]>,_end_key:Option<&[u8]>)->Result<Box<dyn DatabaseIterator>,EngineError>{
+    pub fn iterator(&self,start_key:Option<&[u8]>,end_key:Option<&[u8]>)->Result<Box<dyn DatabaseIterator>,EngineError>{
         let mut mi = MergedIterator::new();
-        let memtable_iter = self.memtable_manager.read()?.iter();
+        let memtable_iter = self.memtable_manager.read()?.iter(start_key,end_key);
         mi.add_iterator(Box::new(memtable_iter));
-        let version_iter = self.version_manager.read()?.iter()?;
+        let version_iter = self.version_manager.read()?.iter(start_key,end_key)?;
         mi.add_iterator(Box::new(version_iter));
         Ok(Box::new(mi))
     }

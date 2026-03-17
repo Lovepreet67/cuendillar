@@ -75,12 +75,6 @@ pub struct SSTableKeyRange {
 }
 
 impl SSTableKeyRange {
-    pub fn new(first_key: Vec<u8>, last_key: Vec<u8>) -> Self {
-        Self {
-            first_key,
-            last_key,
-        }
-    }
     pub fn serialize(&self, writer: &mut dyn Write) -> Result<u64, SSTableError> {
         writer.write_u64::<BigEndian>(self.first_key.len() as u64)?;
         writer.write_all(&self.first_key)?;
@@ -210,19 +204,39 @@ impl SSTMetadata {
     pub fn get_size(&self) -> u64 {
         self.footer.data_block_size + self.footer.bloom_filter_size + self.footer.index_block_size
     }
-    pub fn iter(&self) -> Result<Box<dyn DatabaseIterator>, SSTableError> {
-        // we will get the first and last entry from the sstable
-        let first_entry = self.find(&self.key_range.first_key)?;
-        let last_entry = self.find(&self.key_range.last_key)?;
+    pub fn iter(
+        &self,
+        start_key: Option<&[u8]>,
+        end_key: Option<&[u8]>,
+    ) -> Result<Box<dyn DatabaseIterator>, SSTableError> {
+        let file = File::options().read(true).open(&self.file_path)?;
+        // we can use Index to fetch the starting offset
+        let start_offset = if let Some(start_key) = start_key {
+            if let Some(offset) = self.index.get_offset(start_key) {
+                offset.start
+            } else {
+                // fallback: start from beginning
+                0
+            }
+        } else {
+            0
+        };
+        let file_clone = file.try_clone()?; // important: We will clone the file so that other component will not be affected
 
-        // then we will create a buff reader
-        let reader = File::options().read(true).open(&self.file_path)?;
-        // we will limit the reader to data block only
-        let data_reader = BufReader::new(reader.take(self.footer.data_block_size));
+        let mut data_reader = BufReader::new(file_clone.take(self.footer.data_block_size));
+
+        // Seek to start offset manually
+        if start_offset > 0 {
+            data_reader.seek_relative(start_offset as i64)?;
+        }
+
+        // we will get the first and last entry from the sstable
+        let last_entry = self.find(end_key.unwrap_or(&self.key_range.last_key))?;
         Ok(Box::new(SSTIterator::new(
-            first_entry,
             last_entry,
             data_reader,
+            start_key,
+            end_key,
         )))
     }
 }
@@ -232,6 +246,8 @@ pub struct SSTIterator {
     last_entry: Option<OwnedEntry>,
     reader: BufReader<Take<File>>,
     curr_entry: Option<OwnedEntry>,
+    termination_key: Option<Vec<u8>>,
+    terminated: bool,
 }
 
 impl SSTIterator {
@@ -245,27 +261,53 @@ impl SSTIterator {
         }
     }
     pub fn new(
-        first_entry: Option<OwnedEntry>,
         last_entry: Option<OwnedEntry>,
         mut reader: BufReader<Take<File>>,
+        start_key: Option<&[u8]>,
+        termination_key: Option<&[u8]>,
     ) -> Self {
-        // we will read the curr entry
-        let curr_entry = Self::decode_entry(&mut reader);
+        let mut curr_entry = None;
+        while let Some(entry) = Self::decode_entry(&mut reader) {
+            if let Some(start) = start_key {
+                if entry.get_key() < start {
+                    continue;
+                }
+            }
+            curr_entry = Some(entry);
+            break;
+        }
         Self {
-            first_entry: first_entry,
+            first_entry: curr_entry.clone(),
             last_entry: last_entry,
             reader,
             curr_entry,
+            termination_key: termination_key.map(|key| key.into()),
+            terminated: false,
         }
     }
 }
 
 impl DatabaseIterator for SSTIterator {
     fn peek(&self) -> Option<crate::database::Entry<'_>> {
+        if self.terminated {
+            return None;
+        }
         self.curr_entry.as_ref().map(|e| e.into())
     }
     fn next_owned(&mut self) -> Option<OwnedEntry> {
-        std::mem::replace(&mut self.curr_entry, Self::decode_entry(&mut self.reader))
+        if self.terminated {
+            return None;
+        }
+        let mut next_entry = Self::decode_entry(&mut self.reader);
+        if let Some(entry) = &next_entry
+            && self.termination_key.is_some()
+        {
+            if entry.get_key() > self.termination_key.as_ref().map(|e| e.as_slice()).unwrap() {
+                self.terminated = true;
+                next_entry = None;
+            }
+        }
+        std::mem::replace(&mut self.curr_entry, next_entry)
     }
     fn first_entry(&self) -> Option<crate::database::Entry<'_>> {
         self.first_entry.as_ref().map(|e| e.into())

@@ -1,0 +1,87 @@
+Cuendillar Benchmark Report
+===========================
+General Report
+Total Ops: 10000000
+Total Runtime: 30.765496125s sec
+AVG Throughput: 325039.45196820714 ops/sec
+
+Timestamp: Instant { tv_sec: 67840, tv_nsec: 674962875 }
+Name : "fillrandom"
+Count: 10000000
+Duration: 30 secs
+p50:   2 us
+p95:   3 us
+p99:   6 us
+p99.9: 16 us
+Max:   46303 us
+
+
+
+Cuendillar Benchmark Report
+===========================
+General Report
+Total Ops: 100
+Total Runtime: 22.364333ms sec
+AVG Throughput: 4471.405429350386 ops/sec
+
+Timestamp: Instant { tv_sec: 68150, tv_nsec: 536240250 }
+Name : "readrandom"
+Count: 100
+Duration: 0 secs
+p50:   174 us
+p95:   517 us
+p99:   641 us
+p99.9: 1380 us
+Max:   1380 us
+
+Cuendillar Benchmark Report
+===========================
+General Report
+Total Ops: 1000000
+Total Runtime: 177.919154167s sec
+AVG Throughput: 5620.530317165129 ops/sec
+
+Timestamp: Instant { tv_sec: 68548, tv_nsec: 972766500 }
+Name : "readrandom"
+Count: 1000000
+Duration: 177 secs
+p50:   148 us
+p95:   490 us
+p99:   787 us
+p99.9: 1745 us
+Max:   30735 us
+
+Cuendillar Benchmark Report
+===========================
+General Report
+Total Ops: 10000000
+Total Runtime: 1733.918837625s sec
+AVG Throughput: 5767.282633423198 ops/sec
+
+Timestamp: Instant { tv_sec: 70356, tv_nsec: 434921416 }
+Name : "readrandom"
+Count: 10000000
+Duration: 1733 secs
+p50:   149 us
+p95:   473 us
+p99:   765 us
+p99.9: 1928 us
+Max:   51583 us
+
+Cuendillar Benchmark Report
+===========================
+Iterator Scan Report
+Total Ops: 100
+Total Runtime: 6.106447s sec
+AVG Throughput: 16.376134927560987 ops/sec
+
+Timestamp: Instant { tv_sec: 70917, tv_nsec: 57091125 }
+Name : "iteratorscan"
+Count: 100
+Duration: 6 secs
+p50:   37023 us
+p95:   58847 us
+p99:   63615 us
+p99.9: 66687 us
+Max:   66687 us
+

@@ -140,7 +140,7 @@ pub fn memtable_test_iterator(memtable: &mut impl Memtable) {
         })
     );
     // testing iterator
-    let items = &memtable.iter().collect::<Vec<OwnedEntry>>();
+    let items = &memtable.iter(None, None).collect::<Vec<OwnedEntry>>();
     assert_eq!(
         items,
         &vec![

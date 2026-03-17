@@ -101,7 +101,7 @@ fn test_iteration_across_tables() {
 
     manager.insert(row(2, b"c", b"3"), 0).unwrap();
 
-    let items = manager.iter();
+    let items = manager.iter(None, None);
 
     let keys: Vec<Vec<u8>> = items.as_iterator().map(|e| e.get_key().to_vec()).collect();
     eprintln!("{:?}", keys);
