@@ -4,7 +4,7 @@ use cuendillar::{Database, DbConfig};
 
 use crate::{
     report::{PhaseResult, Report},
-    runners::{run_fillrandom, run_readrandom, seed_base},
+    runners::{run_fillrandom, run_iterator_scan, run_readrandom, seed_base},
 };
 
 mod constants;
@@ -13,11 +13,15 @@ mod report;
 mod runners;
 
 fn print_help() {
-    println!("RocksDB-compatible benchmark (fillrandom/readrandom)");
+    println!("RocksDB-compatible benchmark (fillrandom/readrandom/iteratorscan)");
     println!("Options:");
-    println!("  --benchmarks=fillrandom,readrandom");
-    println!("  --num=1000000");
-    println!("  --reads=1000000    (0 means same as --num)");
+    println!("  --benchmarks=fillrandom,readrandom,iteratorscan");
+    println!(
+        "  --num=1000000 (fillrandom : Number of keys to be generated, iteratorscan : key space)"
+    );
+    println!(
+        "  --reads=1000000 (readrandom : Number of keys to be Read, 0 means same as --num, iteratorscan: number of iterator to be created)"
+    );
     println!("  --key_size=16");
     println!("  --value_size=100");
     println!("  --seed=0           (0 means use current time in micros)");
@@ -104,6 +108,22 @@ fn main() {
                 report.add_result(&result);
                 report.report();
                 print_phase(&result);
+            }
+            "iteratorscan" => {
+                drop(db);
+                db = Database::new(config.clone()).expect("failed to reopen db");
+
+                let result = run_iterator_scan(
+                    &mut db,
+                    opts.reads, // number of scans
+                    opts.num,   // key space
+                    opts.key_size,
+                    seed,
+                );
+
+                let mut report = Report::new("Iterator Scan Report");
+                report.add_result(&result);
+                report.report();
                 print_phase(&result);
             }
             other => {

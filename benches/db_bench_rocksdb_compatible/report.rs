@@ -39,7 +39,9 @@ impl Report {
         if result.ops == 0 {
             return;
         }
+
         writeln!(file, "Timestamp: {:?}", result.timestamp).unwrap();
+        writeln!(file, "Name : {:?}", result.name).unwrap();
         writeln!(file, "Count: {}", result.ops).unwrap();
         writeln!(file, "Duration: {} secs", result.elapsed.as_secs()).unwrap();
         writeln!(file, "p50:   {} us", result.hist.value_at_quantile(0.50)).unwrap();
