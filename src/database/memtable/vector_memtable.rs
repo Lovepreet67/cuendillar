@@ -120,13 +120,15 @@ impl Memtable for VectorMemtable {
         return Ok(None);
     }
     #[instrument(name = "Vector Memetable Iter", skip(self))]
-    fn iter(&self) -> Box<dyn DatabaseIterator> {
+    fn iter(&self, start_key: Option<&[u8]>, end_key: Option<&[u8]>) -> Box<dyn DatabaseIterator> {
         // we will store a copy of enteries in sorted order
         let mut seen = HashSet::new();
         let mut entries = Vec::new();
 
         for (idx, entry) in self.store.iter().enumerate().rev() {
-            if seen.insert(entry.key.clone()) {
+            let in_range = start_key.map_or(true, |start| entry.key.as_slice() >= start)
+                && end_key.map_or(true, |end| entry.key.as_slice() <= end);
+            if seen.insert(entry.key.clone()) && in_range {
                 entries.push(idx);
             }
         }

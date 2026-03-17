@@ -115,7 +115,7 @@ impl VersionManager {
         let mut index = IndexFactory::build_index(&self.config.index);
         let mut bytes_encoded = 0;
         let mut byte_encoded_since_last_index = self.config.index.index_block_min_size;
-        let mt_iter = mt.iter();
+        let mt_iter = mt.iter(None, None);
         let first_key = mt_iter
             .first_entry()
             .expect("Memtable to Be flushed should contain atleast one entry")
@@ -207,7 +207,7 @@ impl VersionManager {
         let mut index = IndexFactory::build_index(index_config);
         let mut bytes_encoded = 0;
         let mut byte_encoded_since_last_index = index_config.index_block_min_size;
-        let mt_iter = mt.iter();
+        let mt_iter = mt.iter(None, None);
         let first_key = mt_iter
             .first_entry()
             .expect("Memtable to Be flushed should contain atleast one entry")
@@ -326,7 +326,11 @@ impl VersionManager {
         // }
         Ok(())
     }
-    pub fn iter(&self) -> Result<MergedIterator, SSTableError> {
-        self.version.iter()
+    pub fn iter(
+        &self,
+        start_key: Option<&[u8]>,
+        end_key: Option<&[u8]>,
+    ) -> Result<MergedIterator, SSTableError> {
+        self.version.iter(start_key, end_key)
     }
 }

@@ -365,12 +365,32 @@ impl Version {
         }
         Ok(Version::new(levels, comitted_wal_offset))
     }
-    fn iter(&self) -> Result<MergedIterator, SSTableError> {
-        // for now we can create a single iterator for each sstable it will work file
+    fn iter(
+        &self,
+        start_key: Option<&[u8]>,
+        end_key: Option<&[u8]>,
+    ) -> Result<MergedIterator, SSTableError> {
         let mut mi = MergedIterator::new();
+        // returns true if the sstable lie in the specified range
+        fn overlaps(table: &SSTMetadata, start: Option<&[u8]>, end: Option<&[u8]>) -> bool {
+            if let Some(start_key) = start {
+                if table.key_range.last_key.as_slice() < start_key {
+                    return false;
+                }
+            }
+            if let Some(end_key) = end {
+                if table.key_range.first_key.as_slice() > end_key {
+                    return false;
+                }
+            }
+            true
+        }
         for level in &self.levels {
             for table in level {
-                let iter = table.iter()?;
+                if !overlaps(table, start_key, end_key) {
+                    break; // safe because sorted & non-overlapping
+                }
+                let iter = table.iter(start_key, end_key)?;
                 mi.add_iterator(iter);
             }
         }

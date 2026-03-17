@@ -40,7 +40,7 @@ impl HashMetable {
             None => None,
         }
     }
-    fn get_Owned_entry_from_hashtable_entry<'a>(
+    fn get_owned_entry_from_hashtable_entry<'a>(
         hashtable_entry: Option<(&'a Vec<u8>, &'a (u64, Option<Vec<u8>>))>,
     ) -> Option<OwnedEntry> {
         match hashtable_entry {
@@ -90,11 +90,16 @@ impl Memtable for HashMetable {
         };
     }
     #[instrument(name = "Hash Memetable Iter", skip(self))]
-    fn iter(&self) -> Box<dyn DatabaseIterator> {
+    fn iter(&self, start_key: Option<&[u8]>, end_key: Option<&[u8]>) -> Box<dyn DatabaseIterator> {
         let mut entries: Vec<OwnedEntry> = self
             .store
             .iter()
-            .map(|item| Self::get_Owned_entry_from_hashtable_entry(Some(item)).unwrap())
+            .filter(|item| {
+                let in_range = start_key.map_or(true, |start| item.0.as_slice() >= start)
+                    && end_key.map_or(true, |end| item.0.as_slice() <= end);
+                in_range
+            })
+            .map(|item| Self::get_owned_entry_from_hashtable_entry(Some(item)).unwrap())
             .collect();
         entries.sort_by(|a, b| a.get_key().cmp(&b.get_key()));
         Box::new(HashMetableIterator { entries, curr: 0 })
