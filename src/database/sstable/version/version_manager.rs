@@ -103,6 +103,7 @@ impl VersionManager {
     // This function will return the sstatble meta which are clear to be droped
     /// This Function doesn't change anything it returns the new version which caller need to to add to version manager
     /// Calling push_version
+    #[allow(unused)]
     pub fn push_memtable(&self, mt: Arc<dyn Memtable>) -> Result<SSTMetadata, SSTableError> {
         assert!(mt.size() > 0);
         let new_table_id = format!("{}", mt.get_id());

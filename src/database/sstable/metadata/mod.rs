@@ -75,12 +75,6 @@ pub struct SSTableKeyRange {
 }
 
 impl SSTableKeyRange {
-    pub fn new(first_key: Vec<u8>, last_key: Vec<u8>) -> Self {
-        Self {
-            first_key,
-            last_key,
-        }
-    }
     pub fn serialize(&self, writer: &mut dyn Write) -> Result<u64, SSTableError> {
         writer.write_u64::<BigEndian>(self.first_key.len() as u64)?;
         writer.write_all(&self.first_key)?;
