@@ -114,7 +114,6 @@ impl Version {
     #[instrument(name = "Apply version Update", skip(self, normalized_update))]
     pub fn apply_update(&mut self, normalized_update: VersionUpdate) -> Result<(), SSTableError> {
         use std::collections::HashMap;
-
         let mut adds: HashMap<usize, Vec<(usize, SSTMetadata)>> = HashMap::new();
         let mut dels: HashMap<usize, Vec<uuid::Uuid>> = HashMap::new();
 
@@ -170,7 +169,7 @@ impl Version {
             }
         }
 
-        self.commited_wal_offset = wal_offset;
+        self.commited_wal_offset = std::cmp::max(wal_offset, self.commited_wal_offset);
         Ok(())
     }
     // this function will convert all the add to add with sstmetadata
@@ -179,41 +178,70 @@ impl Version {
         update: &mut VersionUpdate,
         root_dir: &Path,
     ) -> Result<(), SSTableError> {
+        // first tables that are added in this changelog so that we can remove deletion for those tables only
+        let added_tables: HashSet<_> = update
+            .operations
+            .iter()
+            .filter_map(|operation| match operation {
+                VersionOperation::Del { level: _, id: _ } => {
+                    return None;
+                }
+                VersionOperation::Add {
+                    level: _,
+                    id,
+                    index: _,
+                } => Some(*id),
+                VersionOperation::AddWithMeta {
+                    level: _,
+                    meta,
+                    index: _,
+                } => {
+                    return Some(meta.id);
+                }
+            })
+            .collect();
         // first we will remove all the tables which are added first in the changelog and then deleted to pervent uneccessary operatons
         let mut removed_tables = HashSet::new();
         let original_updates = std::mem::take(&mut update.operations);
         update.operations = original_updates
             .into_iter()
             .rev()
-            .filter(|operation| match operation {
-                VersionOperation::Del { level: _, id } => {
-                    removed_tables.insert(id.clone());
-                    return false;
-                }
-                VersionOperation::Add {
-                    level: _,
-                    id,
-                    index: _,
-                } => {
-                    if removed_tables.contains(id) {
-                        return false;
-                    } else {
+            .filter(|operation| {
+                match operation {
+                    VersionOperation::Del { level: _, id } => {
+                        removed_tables.insert(id.clone());
+                        if added_tables.contains(id) {
+                            return false;
+                        }
                         return true;
                     }
-                }
-                // below case will not happen
-                VersionOperation::AddWithMeta {
-                    level: _,
-                    meta,
-                    index: _,
-                } => {
-                    if removed_tables.contains(&meta.id) {
-                        return false;
-                    } else {
-                        return true;
+                    VersionOperation::Add {
+                        level: _,
+                        id,
+                        index: _,
+                    } => {
+                        if removed_tables.contains(id) {
+                            return false;
+                        } else {
+                            return true;
+                        }
+                    }
+                    // below case will not happen
+                    VersionOperation::AddWithMeta {
+                        level: _,
+                        meta,
+                        index: _,
+                    } => {
+                        if removed_tables.contains(&meta.id) {
+                            return false;
+                        } else {
+                            return true;
+                        }
                     }
                 }
             })
+            .collect::<Vec<VersionOperation>>()
+            .into_iter()
             .rev()
             .collect();
 

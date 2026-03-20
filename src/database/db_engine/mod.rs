@@ -268,9 +268,25 @@ impl Drop for Engine {
         info!("Stoping Engine....");
         self.under_shutdown
             .store(true, std::sync::atomic::Ordering::Relaxed);
-        info!("Waiting for Components to stop...");
+        // we will first fetch the compaction and cleaner workers
+        let compaction_worker =  self.workers.pop();
+        let cleaner_worker = self.workers.pop();
+
+        // first we let all the workers to push memtables
         while let Some(worker) = self.workers.pop() {
             worker.join().unwrap();
+        }
+        // then we will let compaction to run for 120 secs and then we will singal it to stop
+        // sleep(Duration::from_secs(120));
+        if let Some(compaction_worker) = compaction_worker{
+            info!("Waiting for compaction to stop");
+            compaction_worker.join().expect("Error while joining compaction thread");
+        }
+        // then we will wait for 30 secs so that cleaner can do its job 
+        // sleep(Duration::from_secs(30));
+        if let Some(clearner_worker) = cleaner_worker{
+            info!("Waiting for cleaner to stop");
+            clearner_worker.join().expect("Error while joining the cleaner thread");
         }
     }
 }

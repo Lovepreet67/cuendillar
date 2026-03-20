@@ -1,6 +1,9 @@
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+};
 
-use cuendillar::Database;
+use cuendillar::{Database, DbConfig};
 use hdrhistogram::Histogram;
 
 use crate::{
@@ -126,7 +129,7 @@ pub fn run_readrandom(
     let mut hist = Histogram::new(3).expect("histogram init");
 
     let started = Instant::now();
-    for _ in 0..reads {
+    for i in 0..reads {
         let key_rand = rng.next_u64() % key_space;
         generate_key_from_int(key_rand, &mut key_buf);
         let op_started = Instant::now();
@@ -135,6 +138,9 @@ pub fn run_readrandom(
         }
         let micros = op_started.elapsed().as_micros() as u64;
         hist.record(micros).expect("hist record");
+        if i % 1000000 == 0 {
+            eprintln!("last iterations is  : {}", i)
+        }
     }
 
     PhaseResult {
@@ -196,6 +202,32 @@ pub fn run_iterator_scan(
         ops: scans,
         elapsed: started.elapsed(),
         found: Some(total_entries),
+        hist,
+    }
+}
+
+pub fn run_recovery(config: Arc<DbConfig>, num: u64) -> PhaseResult {
+    let mut hist = Histogram::new(3).expect("histogram init");
+    let mut total_time = Duration::new(0, 0);
+    for _ in 0..num {
+        let start = Instant::now();
+        let db = Database::new(config.clone()).expect("failed to create db");
+        let recovery_time = start.elapsed();
+        total_time += recovery_time;
+        // record recovery as a single "op"
+        hist.record(recovery_time.as_micros() as u64)
+            .expect("hist record");
+        let x = db.get(b"testing_key_may_not_exist");
+        eprintln!("{:?}", x);
+        drop(db);
+    }
+
+    PhaseResult {
+        timestamp: Instant::now(),
+        name: "recovery".to_string(),
+        ops: num,
+        elapsed: total_time,
+        found: None,
         hist,
     }
 }
