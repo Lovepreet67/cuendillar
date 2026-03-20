@@ -4,7 +4,7 @@ use cuendillar::{Database, DbConfig};
 
 use crate::{
     report::{PhaseResult, Report},
-    runners::{run_fillrandom, run_iterator_scan, run_readrandom, seed_base},
+    runners::{run_fillrandom, run_iterator_scan, run_readrandom, run_recovery, seed_base},
 };
 
 mod constants;
@@ -87,32 +87,37 @@ fn main() {
         let _ = remove_dir_all(&config.root_dir);
     }
 
-    let mut db = Database::new(config.clone()).expect("failed to create db");
-
     for benchmark in &opts.benchmarks {
         match benchmark.as_str() {
+            "recovery" => {
+                let result = run_recovery(config.clone(), opts.num);
+                let mut report = Report::new("General Report");
+                report.add_result(&result);
+                report.report();
+                print_phase(&result);
+            }
             "fillrandom" => {
+                let mut db = Database::new(config.clone()).expect("failed to create db");
+
                 let result =
                     run_fillrandom(&mut db, opts.num, opts.key_size, opts.value_size, seed);
                 let mut report = Report::new("General Report");
                 report.add_result(&result);
                 report.report();
                 print_phase(&result);
+                drop(db);
             }
             "readrandom" => {
-                // Mirrors db_bench typical use_existing_db flow between phases.
-                drop(db);
-                db = Database::new(config.clone()).expect("failed to reopen db");
+                let mut db = Database::new(config.clone()).expect("failed to create db");
                 let result = run_readrandom(&mut db, opts.reads, opts.num, opts.key_size, seed);
                 let mut report = Report::new("General Report");
                 report.add_result(&result);
                 report.report();
                 print_phase(&result);
+                drop(db);
             }
             "iteratorscan" => {
-                drop(db);
-                db = Database::new(config.clone()).expect("failed to reopen db");
-
+                let mut db = Database::new(config.clone()).expect("failed to create db");
                 let result = run_iterator_scan(
                     &mut db,
                     opts.reads, // number of scans
@@ -125,6 +130,7 @@ fn main() {
                 report.add_result(&result);
                 report.report();
                 print_phase(&result);
+                drop(db);
             }
             other => {
                 eprintln!("unsupported benchmark: {other}");
@@ -133,8 +139,8 @@ fn main() {
         }
     }
 
+    // This should be done only after droping
     if opts.destroy_db_after {
-        drop(db);
         let _ = remove_dir_all(&config.root_dir);
     }
 }

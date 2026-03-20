@@ -28,7 +28,7 @@ index_block_min_size = 4096
 
 [compaction]
 root_dir = "./table/sstable"
-compaction_interval = 100
+compaction_interval = 5
 min_l0_file_count = 3
 variant = "leveled"
 base_entries_per_table = 1000_00
@@ -39,7 +39,7 @@ max_level_count = 5
 
 [cleaning]
 root_dir = "./table/sstable"
-cleaning_interval = 100
+cleaning_interval = 10
 
 [version_manager]
 version_manager_sync_mode = "nosync"

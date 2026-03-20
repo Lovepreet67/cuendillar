@@ -1,0 +1,106 @@
+// Below Benchmarks are for 100M keys
+Cuendillar Benchmark Report
+===========================
+General Report
+Total Ops: 10000000
+Total Runtime: 30.056584709s sec
+AVG Throughput: 332705.7979746331 ops/sec
+
+Timestamp: Instant { tv_sec: 101504, tv_nsec: 562513458 }
+Name : "fillrandom"
+Count: 10000000
+Duration: 30 secs
+p50:   2 us
+p95:   3 us
+p99:   5 us
+p99.9: 9 us
+Max:   167039 us
+
+Cuendillar Benchmark Report
+===========================
+General Report
+Total Ops: 10000000
+Total Runtime: 53.6991655s sec
+AVG Throughput: 186222.63319902058 ops/sec
+
+Timestamp: Instant { tv_sec: 101852, tv_nsec: 627085666 }
+Name : "readrandom"
+Count: 10000000
+Duration: 53 secs
+p50:   2 us
+p95:   5 us
+p99:   97 us
+p99.9: 131 us
+Max:   2291 us
+
+// Below Benchmarks are for 1M keysCuendillar Benchmark Report
+===========================
+General Report
+Total Ops: 1000000
+Total Runtime: 2.999798209s sec
+AVG Throughput: 333355.7560637906 ops/sec
+
+Timestamp: Instant { tv_sec: 101962, tv_nsec: 672103875 }
+Name : "fillrandom"
+Count: 1000000
+Duration: 2 secs
+p50:   2 us
+p95:   3 us
+p99:   5 us
+p99.9: 10 us
+Max:   18815 us
+
+Cuendillar Benchmark Report
+===========================
+General Report
+Total Ops: 1000000
+Total Runtime: 2.134582917s sec
+AVG Throughput: 468475.59400757635 ops/sec
+
+Timestamp: Instant { tv_sec: 101995, tv_nsec: 774616583 }
+Name : "readrandom"
+Count: 1000000
+Duration: 2 secs
+p50:   1 us
+p95:   3 us
+p99:   4 us
+p99.9: 98 us
+Max:   1319 us
+
+// Below Benchmark is for 100M
+
+
+Cuendillar Benchmark Report
+===========================
+General Report
+Total Ops: 100000000
+Total Runtime: 333.084665958s sec
+AVG Throughput: 300223.9677181939 ops/sec
+
+Timestamp: Instant { tv_sec: 102742, tv_nsec: 28398000 }
+Name : "fillrandom"
+Count: 100000000
+Duration: 333 secs
+p50:   2 us
+p95:   4 us
+p99:   7 us
+p99.9: 34 us
+Max:   927743 us
+
+Cuendillar Benchmark Report
+===========================
+General Report
+Total Ops: 10000000
+Total Runtime: 749.175962042s sec
+AVG Throughput: 13347.999010463958 ops/sec
+
+Timestamp: Instant { tv_sec: 107313, tv_nsec: 863749458 }
+Name : "readrandom"
+Count: 10000000
+Duration: 749 secs
+p50:   105 us
+p95:   147 us
+p99:   166 us
+p99.9: 231 us
+Max:   24303 us
+
