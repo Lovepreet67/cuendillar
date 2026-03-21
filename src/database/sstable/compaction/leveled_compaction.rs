@@ -304,7 +304,8 @@ impl Compaction for LevelCompaction {
         let mut merged_enteries = version
             .get_level_tables(0)
             .unwrap()
-            .into_iter()
+            .iter()
+            .take(self.config.max_l0_file_count_per_cycle)
             .rev()
             .map(|table| {
                 compaction_update.add_operation(Del {
@@ -377,7 +378,11 @@ impl Compaction for LevelCompaction {
                     id: poped_table.id,
                 });
                 merged_enteries = poped_table.item_list()?;
-                let mut tables_to_be_poped = max(6 - i, 2);
+                let mut tables_to_be_poped = max(
+                    self.config.max_l0_file_count_per_cycle
+                        / (self.config.level_entries_growth_factor * i),
+                    1,
+                );
                 while !new_li_meta.is_empty() && tables_to_be_poped > 0 {
                     let poped_table = new_li_meta.pop().unwrap();
                     compaction_update.add_operation(Del {

@@ -19,6 +19,11 @@ use crate::database::{
         metadata::{bloom_filter::BloomFilter, index::SSTIndex},
     },
 };
+use std::cell::RefCell;
+
+thread_local! {
+    static READ_BUF: RefCell<Vec<u8>> = RefCell::new(Vec::new());
+}
 
 pub mod bloom_filter;
 pub mod index;
@@ -176,17 +181,27 @@ impl SSTMetadata {
                 let file = File::options().read(true).open(&self.file_path)?;
                 self.file.get_or_init(move || file);
             }
-            let reader = self.file.get().expect("File Should always there");
-            let mut buf = vec![0u8; (block_offset.end - block_offset.start) as usize];
-            reader.read_exact_at(&mut buf, block_offset.start)?;
-            let mut reader = Cursor::new(&buf);
-            while let Ok(entry) = OwnedEntry::decode(&mut reader) {
-                if key == entry.get_key() {
-                    return Ok(Some(entry));
-                } else if entry.get_key() > key {
-                    break;
+            let size = (block_offset.end - block_offset.start) as usize;
+            return READ_BUF.with(|b| {
+                let mut buf = b.borrow_mut();
+                // Resize but DO NOT reallocate if capacity is enough
+                let curr_capacity = buf.capacity();
+                if curr_capacity < size {
+                    buf.reserve(size - curr_capacity);
                 }
-            }
+                buf.resize(size, 0); // ensures length is correct
+                let reader = self.file.get().expect("File Should always there");
+                reader.read_exact_at(&mut buf, block_offset.start)?;
+                let mut reader = Cursor::new(&buf[..]);
+                while let Ok(entry) = OwnedEntry::decode(&mut reader) {
+                    if key == entry.get_key() {
+                        return Ok(Some(entry));
+                    } else if entry.get_key() > key {
+                        break;
+                    }
+                }
+                Ok(None)
+            });
         }
         return Ok(None);
     }
