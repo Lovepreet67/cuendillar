@@ -14,8 +14,6 @@ variant = "btree"
 manager_variant = "default"
 max_memtable_size_in_mega_bytes = 64
 
-[sstable]
-variant = "default"
 
 [bloom]
 variant = "default"
