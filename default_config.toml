@@ -6,7 +6,7 @@ variant = "default"
 wal_dir = "./table/wal"
 wal_sync_variant = "nosync"
 wal_group_sync_size = 100
-wal_file_size_in_bytes = 200_00_00_0
+wal_file_size_in_bytes = 100_000_000
 wal_max_payload_len_in_bytes = 1000_000 # 1 MB
 
 [memtable]
@@ -33,7 +33,7 @@ variant = "leveled"
 base_entries_per_table = 1000_00
 level_entries_growth_factor = 4
 level_size_growth_factor = 4
-level_base_size = 640_000_000     # it should be atleast equal to the memtable size
+level_base_size = 320_000_000     # it should be atleast equal to the memtable size
 max_level_count = 5
 
 [cleaning]

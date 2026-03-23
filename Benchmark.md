@@ -1,12 +1,12 @@
-# Benchmark results snapshot (`bench_result/2026-03-22`)
+# Benchmark results snapshot (`bench_result/2026-03-23`)
 
-This document describes how the numbers in **`bench_result/2026-03-22/rd_report.txt`** were produced, what they mean, and how to read them.
-
+This document describes the performance testing of the cuendillar
 ---
+In this section we will be discussing the rocks_db_compatible benchmarks, you can run the benchmark yourself following instructions in [`docs/ROCKS_DB_BENCHMARK.md`](docs/ROCKS_DB_BENCHMARK.md).
 
-## Which benchmark produced this file?
+The following result is based on the benchmarks ran on the Macbook M1 machine with 8gb of RAM and 75GB of free SSD.
 
-The append-only report **`rd_report.txt`** is written by the **`db_bench_rocksdb_compatible`** binary (see [`benches/db_bench_rocksdb_compatible/README.md`](benches/db_bench_rocksdb_compatible/README.md) and [`benches/doc.md`](benches/doc.md)).
+you can find the actual result in the [`Result`](bench_result/2026-03-23/rd_report.txt) file.
 
 For these runs, the relevant phases are:
 
@@ -30,11 +30,11 @@ So **`num`** is both the number of writes in `fillrandom` and the logical key un
 
 ## Important note: time between write and read
 
-Between the **write** phase (`fillrandom`) and the **read** phase (`readrandom`), **enough wall time was allowed** for background work—especially **compaction**—to make progress or settle, so the read numbers are not measuring a database still in the middle of the same burst of flushes as the tail end of the load. Exact idle duration was not recorded in `rd_report.txt`; treat this as an intentional methodology choice when comparing to other systems or to same-day runs without a pause.
+Between the **write** phase (`fillrandom`) and the **read** phase (`readrandom`), **enough wall time was allowed** for background work—especially **compaction**—to make progress or settle, so the read numbers are not measuring a database still in the middle of the same burst of flushes as the tail end of the load. Exact idle duration was not recorded in `rd_report.txt`; treat this as an intentional methodology choice when comparing to other systems or to same-day runs without a pause. 
 
 ---
 
-## How to read the report lines
+## Report
 
 Each block is a **Cuendillar Benchmark Report** / **General Report** with:
 
@@ -50,40 +50,54 @@ Higher percentiles and **Max** often reflect compaction, I/O stalls, or lock con
 
 ## Data summarized from `rd_report.txt`
 
-The source file includes inline comments (`// 100M keys as base`, etc.) grouping runs. Below is a concise summary of each **fillrandom** + **readrandom** pair where both appear in sequence for a given key-space comment.
+The system is benchmarked across multiple dataset sizes: **100M, 50M, 30M, 10M, and 1M keys**.
 
-### 100M key space (first block in file)
+For each dataset size `x`, the benchmark performs:
+1. Start with an empty database
+2. Insert `x` keys (`fillrandom`)
+3. Allow a cooldown period for background processes (e.g., compaction)
+4. Execute 1,000,000 random reads over the same keyspace (`readrandom`)
+
+Each Benchmark is explained below
+
+
+### 100M key space 
 
 | Phase | Count | Wall time (reported) | Avg throughput | p50 / p95 / p99 / p99.9 / Max (µs) |
 |--------|------:|----------------------|----------------|-------------------------------------|
-| fillrandom | 100,000,000 | ~343 s | ~291,519 ops/s | 3 / 4 / 6 / 21 / 463,871 |
-| readrandom | 1,000,000 | ~69 s | ~14,462 ops/s | 91 / 147 / 181 / 392 / 11,055 |
+| fillrandom | 100,000,000 | ~336 s | ~296,890 ops/s | 3 / 3 / 6 / 20 / 243,199 |
+| readrandom | 1,000,000 | ~97 s | ~10,316 ops/s | 105 / 143 / 161 / 225 / 14,543 |
 
 ### 50M key space
 
 | Phase | Count | Wall time | Avg throughput | p50 / p95 / p99 / p99.9 / Max (µs) |
 |--------|------:|-----------|----------------|-------------------------------------|
-| fillrandom | 50,000,000 | ~164 s | ~304,817 ops/s | 2 / 4 / 6 / 13 / 182,015 |
-| readrandom | 1,000,000 | ~22 s | ~45,476 ops/s | 3 / 115 / 142 / 170 / 1,331 |
+| fillrandom | 50,000,000 | ~168 s | ~297,486 ops/s | 3 / 3 / 6 / 23 / 340,735 |
+| readrandom | 1,000,000 | ~77 s | ~12937 ops/s | 103 / 144 / 162 / 211 / 77,19 |
 
 ### 30M key space
 
 | Phase | Count | Wall time | Avg throughput | p50 / p95 / p99 / p99.9 / Max (µs) |
 |--------|------:|-----------|----------------|-------------------------------------|
-| fillrandom | 30,000,000 | ~100 s | ~298,510 ops/s | 3 / 4 / 6 / 12 / 160,255 |
-| readrandom | 1,000,000 | ~2.3 s | ~436,983 ops/s | 2 / 4 / 5 / 8 / 970 |
+| fillrandom | 30,000,000 | ~97 s | ~308,027 ops/s | 2 / 3 / 5 / 12 / 234,111 |
+| readrandom | 1,000,000 | ~8 s | ~115,069 ops/s | 4 / 8 / 114 / 143 / 1325 |
 
 ### 10M key space
 
 | Phase | Count | Wall time | Avg throughput | p50 / p95 / p99 / p99.9 / Max (µs) |
 |--------|------:|-----------|----------------|-------------------------------------|
-| fillrandom | 10,000,000 | ~31 s | ~321,909 ops/s | 2 / 3 / 6 / 9 / 14,831 |
-| readrandom | 1,000,000 | ~2.25 s | ~443,468 ops/s | 2 / 4 / 4 / 6 / 69 |
+| fillrandom | 10,000,000 | ~32 s | ~307,067 ops/s | 3 / 3 / 5 / 10 / 18,399 |
+| readrandom | 1,000,000 | ~6.71 s | ~149,009 ops/s | 3 / 5 / 101 / 128 / 1476 |
 
-### Additional rows in the same file (same day, appended later)
+### 1M key space
 
-The log continues with another **100M fillrandom** (~340 s, similar microsecond percentiles) and **several** **readrandom** entries (1M reads each) with **different** throughputs and latencies—for example one run near **~4,211 ops/s** with much higher p50/p99, and others near **~19k–23k ops/s**. Those are **separate** read passes (or different sessions / machine state) against a **large** populated dataset; they are **not** paired in the file with a fresh fill immediately above each read in every case. Use them as additional samples, not as a single controlled A/B row without matching load metadata.
+| Phase | Count | Wall time | Avg throughput | p50 / p95 / p99 / p99.9 / Max (µs) |
+|--------|------:|-----------|----------------|-------------------------------------|
+| fillrandom | 1,000,000 | ~2.93 s | ~340,149 ops/s | 2 / 3 / 5 / 9 / 5,907 |
+| readrandom | 1,000,000 | ~1.79 s | ~557,846 ops/s | 2 / 3 / 3 / 4 / 211 |
 
+### Config Used
+The same rd_report.txt file contain the config which was used during the benchmarking
 ---
 
 ## Interpretation (high level)
@@ -118,3 +132,6 @@ cargo bench --bench db_bench_rocksdb_compatible -- \
 ```
 
 Use **`--use_existing_db=true`** on the read leg so the data directory from the fill is preserved (see README). Reports append under **`bench_result/<YYYY-MM-DD>/rd_report.txt`**.
+
+For more detials you can refer to run the benchmark yourself following instructions in [`docs/ROCKS_DB_BENCHMARK.md`](docs/ROCKS_DB_BENCHMARK.md).
+
