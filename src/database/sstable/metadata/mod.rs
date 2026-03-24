@@ -9,7 +9,7 @@ use std::{
 };
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use tracing::error;
+use tracing::warn;
 
 use crate::database::{
     OwnedEntry,
@@ -270,7 +270,10 @@ impl SSTIterator {
         match OwnedEntry::decode(reader) {
             Ok(v) => Some(v),
             Err(e) => {
-                error!("Error while reading entry during sstable iteration {:?}", e);
+                warn!(
+                    "Noramal behaviour: Error while reading entry during sstable iteration {:?} so we will be taking this as termination",
+                    e
+                );
                 return None;
             }
         }

@@ -1,35 +1,35 @@
 use std::{
-    collections::HashSet,
     fs::{File, create_dir_all},
-    io::Write,
-    mem::take,
+    io::{BufWriter, Write},
     sync::{Arc, OnceLock, RwLock},
-    vec,
 };
 
 use byteorder::{BigEndian, WriteBytesExt};
 use tracing::{info, instrument};
 
-use crate::database::{
-    Entry,
-    OwnedEntry,
-    config::{
-        bloom_config::BloomConfig, compaction_config::CompactionConfig, index_config::IndexConfig,
-    },
-    // db_engine::instrumented::InstrumentedRwLock as RwLock,
-    sstable::{
-        compaction::Compaction,
-        errors::SSTableError,
-        metadata::{
-            SSTMetadata, SSTableFooter, SSTableKeyRange, bloom_filter::bloom_factory::BloomFactory,
-            index::index_factory::IndexFactory,
+use crate::{
+    DatabaseIterator,
+    database::{
+        OwnedEntry,
+        config::{
+            bloom_config::BloomConfig, compaction_config::CompactionConfig,
+            index_config::IndexConfig,
         },
-        version::{
-            Version,
-            version_manager::VersionManager,
-            version_update::{
-                VersionOperation::{AddWithMeta, Del},
-                VersionUpdate,
+        iterator::merged_iterator::MergedIterator,
+        sstable::{
+            compaction::Compaction,
+            errors::SSTableError,
+            metadata::{
+                SSTMetadata, SSTableFooter, SSTableKeyRange,
+                bloom_filter::bloom_factory::BloomFactory, index::index_factory::IndexFactory,
+            },
+            version::{
+                Version,
+                version_manager::VersionManager,
+                version_update::{
+                    VersionOperation::{AddWithMeta, Del},
+                    VersionUpdate,
+                },
             },
         },
     },
@@ -56,20 +56,45 @@ impl LevelCompaction {
             index_config: index_config.clone(),
         }
     }
-    #[instrument(name = "Leveled Compaction Encode Table", skip(self),fields(entries_len=enteries.len()))]
+    #[instrument(
+        name = "Leveled Compaction Encode Table",
+        skip(self, it),
+        fields(table_id)
+    )]
     fn encode_table(
         &self,
         level: u16,
         table_id: uuid::Uuid,
-        enteries: &[OwnedEntry],
+        it: &mut MergedIterator,
+        take: usize,
+        remove_tombstone: bool,
     ) -> Result<SSTMetadata, SSTableError> {
-        assert!(enteries.len() > 0);
+        let mut enteries = Vec::with_capacity(take);
+        let mut taken = 0;
+        while take > taken {
+            if let Some(entry) = it.next_owned() {
+                if remove_tombstone && matches!(entry, OwnedEntry::Tombstone { seq_no: _, key: _ })
+                {
+                    continue;
+                }
+                enteries.push(entry);
+            } else {
+                break;
+            }
+            taken += 1;
+        }
+        assert!(taken > 0);
         let level_path = self.config.root_dir.join(format!("l{}", level));
         create_dir_all(&level_path)?;
         let new_table_path = level_path.join(table_id.to_string());
-        let mut writer = Vec::new();
+        let file = File::options()
+            .append(true)
+            .create_new(true)
+            .open(&new_table_path)?;
 
-        let mut bloom = BloomFactory::build_bloom_filter(&self.bloom_config, enteries.len() as u64);
+        let mut writer = BufWriter::new(file);
+
+        let mut bloom = BloomFactory::build_bloom_filter(&self.bloom_config, taken as u64);
         let mut index = IndexFactory::build_index(&self.index_config);
 
         let mut bytes_encoded = 0;
@@ -77,7 +102,6 @@ impl LevelCompaction {
         let first_key = enteries[0].get_key().into();
         let last_key = enteries[enteries.len() - 1].get_key().into();
         for i in enteries {
-            let i = Entry::from(i);
             // check if entry is eligible for entry
             if byte_encoded_since_last_index >= self.index_config.index_block_min_size as u64 {
                 index.add_entry(i.get_key(), bytes_encoded);
@@ -123,11 +147,7 @@ impl LevelCompaction {
             key_range_block_size,
         );
         footer.seriealize(&mut writer)?;
-        File::options()
-            .append(true)
-            .create_new(true)
-            .open(&new_table_path)?
-            .write_all(&writer)?;
+        writer.flush()?;
         Ok(SSTMetadata::new(
             table_id,
             bloom.into(),
@@ -140,41 +160,15 @@ impl LevelCompaction {
         ))
     }
 
-    // list1 will get more preority
-    #[instrument(name = "Leveled Compaction Merge", ,fields(list1_size=list1.len(),list2_size=list2.len()))]
-    fn merge(list1: Vec<OwnedEntry>, list2: Vec<OwnedEntry>) -> Vec<OwnedEntry> {
-        let mut updated_enteries = Vec::with_capacity(list1.len() + list2.len());
-        let (mut iter1, mut iter2) = (list1.into_iter(), list2.into_iter());
-        let (mut e1, mut e2) = (iter1.next(), iter2.next());
-        while let (Some(v1), Some(v2)) = (&e1, &e2) {
-            if v1.get_key() == v2.get_key() {
-                // we will give list1 priority
-                updated_enteries.push(e1.take().unwrap());
-                e1 = iter1.next();
-                e2 = iter2.next();
-            } else if v1.get_key() < v2.get_key() {
-                updated_enteries.push(e1.take().unwrap());
-                e1 = iter1.next();
-            } else {
-                updated_enteries.push(e2.take().unwrap());
-                e2 = iter2.next();
-            }
-        }
-        while let Some(v1) = e1 {
-            updated_enteries.push(v1);
-            e1 = iter1.next();
-        }
-        while let Some(v2) = e2 {
-            updated_enteries.push(v2);
-            e2 = iter2.next();
-        }
-        updated_enteries
-    }
-    #[instrument(name = "Leveled Compaction Merge",skip(self,version,compaction_update,enteries) ,fields(existing_entries_size=enteries.len()))]
+    #[instrument(
+        name = "Leveled Compaction Merge",
+        skip(self, version, compaction_update, it),
+        fields(level)
+    )]
     fn compact_ln(
         &self,
         level: u16,
-        mut enteries: Vec<OwnedEntry>,
+        it: &mut MergedIterator,
         version: &Version,
         compaction_update: &mut VersionUpdate,
     ) -> Result<(), SSTableError> {
@@ -184,10 +178,17 @@ impl LevelCompaction {
             .unwrap_or_else(|| &[]);
         info!("Total tables in level {} is {}", level, ln_tables.len());
         // we will find the table in which we entries are overlaping
-        // TODO: Avoid this allocation
-        let mut first_key = enteries[0].get_key().into();
+        let mut first_key = it
+            .first_entry()
+            .expect("Merging with empty iterator Not supported")
+            .get_key()
+            .to_vec();
         // Assumtion: enteries contain always items >1
-        let mut last_key = enteries[enteries.len() - 1].get_key().into();
+        let mut last_key = it
+            .last_entry()
+            .expect("Merging with empty iterator Not supported")
+            .get_key()
+            .to_vec();
 
         let mut curr_index = 0;
 
@@ -204,36 +205,36 @@ impl LevelCompaction {
                 });
                 // we need to merge this into enteries
                 // we have two list both sorted and
-                enteries = Self::merge(enteries, table.item_list()?);
+                it.add_iterator(table.iter(None, None)?);
                 // first and last key will change after merging the enteries;
-                first_key = enteries[0].get_key().into();
+                first_key = it
+                    .first_entry()
+                    .expect("Merging with empty iterator Not supported")
+                    .get_key()
+                    .to_vec();
                 // Assumtion: enteries contain always items >1
-                last_key = enteries[enteries.len() - 1].get_key().into();
+                last_key = it
+                    .last_entry()
+                    .expect("Merging with empty iterator Not supported")
+                    .get_key()
+                    .to_vec();
             }
             // else if the last key of enteris is smaller than current table it means the entries sstable should be in front of current
-            else if enteries.len() > 0 && table.key_range.first_key > last_key {
-                let original_enteries = if level < self.config.max_level_count as u16 {
-                    take(&mut enteries)
-                } else {
-                    // remove tombstones in max level
-                    take(&mut enteries)
-                        .into_iter()
-                        .filter(|entry| {
-                            return match entry {
-                                OwnedEntry::Tombstone { seq_no: _, key: _ } => false,
-                                _ => true,
-                            };
-                        })
-                        .collect()
-                };
+            else if it.peek().is_some() && table.key_range.first_key > last_key {
                 // currently we are merging all enteries to single sstable but it should be multiple tables
                 let max_enteries_per_sstable = (self.config.level_entries_growth_factor)
                     .pow(level.into())
                     * self.config.base_entries_per_table;
-                // we will split the whole enteries into the block the size calculated
-                for entry_group in original_enteries.chunks(max_enteries_per_sstable as usize) {
+                let is_last_level = level >= self.config.max_level_count as u16;
+                while it.peek().is_some() {
                     let sstable_meta = self
-                        .encode_table(level, uuid::Uuid::new_v4(), entry_group)
+                        .encode_table(
+                            level,
+                            uuid::Uuid::new_v4(),
+                            it,
+                            max_enteries_per_sstable,
+                            is_last_level,
+                        )
                         .expect("Error while creating new sstable");
                     compaction_update.add_operation(AddWithMeta {
                         level: level as u32,
@@ -243,17 +244,25 @@ impl LevelCompaction {
                     curr_index += 1;
                 }
                 curr_index += 1; // this is for the current table (old one in the level) as after inserting the entries we will inser the curr table
+            } else {
+                curr_index += 1;
             }
         }
         // entereis may be added at the end
-        if enteries.len() > 0 {
+        if it.peek().is_some() {
             let max_enteries_per_sstable = (self.config.level_entries_growth_factor)
                 .pow(level.into())
                 * self.config.base_entries_per_table;
-            // we will split the whole enteries into the block the size calculated
-            for entry_group in enteries.chunks(max_enteries_per_sstable as usize) {
+            let is_last_level = level >= self.config.max_level_count as u16;
+            while it.peek().is_some() {
                 let sstable_meta = self
-                    .encode_table(level, uuid::Uuid::new_v4(), entry_group)
+                    .encode_table(
+                        level,
+                        uuid::Uuid::new_v4(),
+                        it,
+                        max_enteries_per_sstable,
+                        is_last_level,
+                    )
                     .expect("Error while creating new sstable");
                 compaction_update.add_operation(AddWithMeta {
                     level: level as u32,
@@ -297,37 +306,26 @@ impl Compaction for LevelCompaction {
         drop(version_manager);
         let mut version = (*version).clone();
         let mut compaction_update = VersionUpdate::new(0);
-        // now we have version we will do compaction int he l0
+        // now we have version we will do compaction in the l0
         // now we get multiple iterator and we will merge them into single table
-        let mut key_seen: HashSet<Vec<u8>> = HashSet::new();
-        let mut merged_enteries = version
+        let mut iterator = MergedIterator::new();
+
+        for table in version
             .get_level_tables(0)
             .unwrap()
             .iter()
             .take(self.config.max_l0_file_count_per_cycle)
-            .rev()
-            .map(|table| {
-                compaction_update.add_operation(Del {
-                    level: 0,
-                    id: table.id,
-                });
-                let mut filterd_entries = vec![];
-                for item in table
-                    .item_list()
-                    .expect("Error while getting item list for table")
-                {
-                    if key_seen.insert(item.get_key().into()) {
-                        filterd_entries.push(item);
-                    }
-                }
-                return filterd_entries;
-            })
-            .flatten()
-            .collect::<Vec<OwnedEntry>>();
-        merged_enteries.sort_by(|a, b| a.get_key().cmp(&b.get_key()));
+        {
+            compaction_update.add_operation(Del {
+                level: 0,
+                id: table.id,
+            });
+            let table_iterator = table.iter(None, None)?;
+            iterator.add_iterator(table_iterator);
+        }
         info!(
-            "Merged all l0 tables in total entries : {}",
-            merged_enteries.len()
+            "{} l0 tables tables are poped for compaction",
+            compaction_update.operations.len()
         );
         // no we have a single iterator over all the table in l0
         // now we will set merge this table to the l1 and so on
@@ -336,7 +334,7 @@ impl Compaction for LevelCompaction {
             let mut local_compaction_update = VersionUpdate::new(0);
             self.compact_ln(
                 i as u16,
-                merged_enteries,
+                &mut iterator,
                 &version,
                 &mut local_compaction_update,
             )?;
@@ -376,7 +374,8 @@ impl Compaction for LevelCompaction {
                     level: i as u32,
                     id: poped_table.id,
                 });
-                merged_enteries = poped_table.item_list()?;
+                iterator = MergedIterator::new();
+                iterator.add_iterator(poped_table.iter(None, None)?);
                 // we try to move half data we added to the next level
                 let mut tables_to_be_poped = new_li_meta.len() / 2;
                 while !new_li_meta.is_empty() && tables_to_be_poped > 0 {
@@ -385,14 +384,12 @@ impl Compaction for LevelCompaction {
                         level: i as u32,
                         id: poped_table.id,
                     });
-                    let mut updated_vec = poped_table.item_list()?;
-                    updated_vec.extend(merged_enteries);
-                    merged_enteries = updated_vec;
+                    iterator.add_iterator(poped_table.iter(None, None)?);
                     tables_to_be_poped -= 1;
                 }
             } else {
                 // nothing to worry since current iteration is last iteration
-                merged_enteries = vec![];
+                iterator = MergedIterator::new();
             }
         }
         // following the above code the version will contain all the neccessary updates
