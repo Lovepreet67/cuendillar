@@ -1,4 +1,6 @@
 /target
+# Demo DB from examples/cuendillar_example_kv (paths relative to process CWD)
+**/data/cuendillar_demo/
 # /bench_result
 workload/1m.txt
 testing_workload*
@@ -7,3 +9,5 @@ test_result.txt
 table
 temp*
 output.txt
+examples/cuendillar_example_kv/target
+examples/cuendillar_example_kv/Cargo.lock

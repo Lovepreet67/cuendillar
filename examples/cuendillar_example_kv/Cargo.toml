@@ -1,0 +1,11 @@
+[package]
+name = "cuendillar_example_kv"
+version = "0.1.0"
+edition = "2024"
+description = "Example CLI that uses Cuendillar as a path dependency (like an external application)."
+publish = false
+
+[dependencies]
+anyhow = "1.0.102"
+clap = { version = "4.6.0", features = ["derive", "env"] }
+cuendillar = { path = "../.." }

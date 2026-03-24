@@ -5,7 +5,8 @@ pub use crate::database::config::{
     self, DbConfig, bloom_config, cleaner_config, compaction_config, config_error, index_config,
     memtable_config, version_manager_config, wal_config,
 };
-use crate::database::db_engine::{Engine, errors::EngineError};
+use crate::database::db_engine::Engine;
+pub use crate::database::db_engine::errors::EngineError;
 pub use crate::database::iterator::DatabaseIterator;
 
 mod database;

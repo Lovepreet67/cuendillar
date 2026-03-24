@@ -208,8 +208,9 @@ impl Version {
             .rev()
             .filter(|operation| {
                 match operation {
-                    VersionOperation::Del { level: _, id } => {
+                    VersionOperation::Del { level, id } => {
                         removed_tables.insert(id.clone());
+                        update.mark_file_to_be_deleted(root_dir.join(format!("l{}/{}", level, id)));
                         if added_tables.contains(id) {
                             return false;
                         }

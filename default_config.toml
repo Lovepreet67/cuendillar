@@ -6,16 +6,14 @@ variant = "default"
 wal_dir = "./table/wal"
 wal_sync_variant = "nosync"
 wal_group_sync_size = 100
-wal_file_size_in_bytes = 200_00_00_0
+wal_file_size_in_bytes = 100_000_000
 wal_max_payload_len_in_bytes = 1000_000 # 1 MB
 
 [memtable]
 variant = "btree"
 manager_variant = "default"
-max_memtable_size_in_mega_bytes = 10
+max_memtable_size_in_mega_bytes = 64
 
-[sstable]
-variant = "default"
 
 [bloom]
 variant = "default"
@@ -30,11 +28,12 @@ index_block_min_size = 4096
 root_dir = "./table/sstable"
 compaction_interval = 5
 min_l0_file_count = 3
+max_l0_file_count_per_cycle = 120 # This should be according to the avaiable memory as all entries will be in the memory
 variant = "leveled"
 base_entries_per_table = 1000_00
 level_entries_growth_factor = 4
 level_size_growth_factor = 4
-level_base_size = 1000_000       # it should be atleast equal to the memtable size
+level_base_size = 320_000_000     # it should be atleast equal to the memtable size
 max_level_count = 5
 
 [cleaning]

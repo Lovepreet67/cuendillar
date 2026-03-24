@@ -1,0 +1,227 @@
+// For 30 million key spaceCuendillar Benchmark Report
+===========================
+General Report
+Total Ops: 30000000
+Total Runtime: 97.393968417s sec
+AVG Throughput: 308027.2884204967 ops/sec
+
+Timestamp: Instant { tv_sec: 72923, tv_nsec: 616876416 }
+Name : "fillrandom"
+Count: 30000000
+Duration: 97 secs
+p50:   2 us
+p95:   3 us
+p99:   5 us
+p99.9: 12 us
+Max:   234111 us
+
+Cuendillar Benchmark Report
+===========================
+General Report
+Total Ops: 1000000
+Total Runtime: 8.690371583s sec
+AVG Throughput: 115069.87824964678 ops/sec
+
+Timestamp: Instant { tv_sec: 73154, tv_nsec: 500646458 }
+Name : "readrandom"
+Count: 1000000
+Duration: 8 secs
+p50:   4 us
+p95:   8 us
+p99:   114 us
+p99.9: 143 us
+Max:   1325 us
+
+// For 10M keys
+
+Cuendillar Benchmark Report
+===========================
+General Report
+Total Ops: 10000000
+Total Runtime: 32.566171375s sec
+AVG Throughput: 307067.1060730423 ops/sec
+
+Timestamp: Instant { tv_sec: 73243, tv_nsec: 369120083 }
+Name : "fillrandom"
+Count: 10000000
+Duration: 32 secs
+p50:   3 us
+p95:   3 us
+p99:   5 us
+p99.9: 10 us
+Max:   18399 us
+
+Cuendillar Benchmark Report
+===========================
+General Report
+Total Ops: 1000000
+Total Runtime: 6.711000959s sec
+AVG Throughput: 149009.06826110915 ops/sec
+
+Timestamp: Instant { tv_sec: 73336, tv_nsec: 286992958 }
+Name : "readrandom"
+Count: 1000000
+Duration: 6 secs
+p50:   3 us
+p95:   5 us
+p99:   101 us
+p99.9: 128 us
+Max:   1476 us
+
+
+// For 1M keys
+
+Cuendillar Benchmark Report
+===========================
+General Report
+Total Ops: 1000000
+Total Runtime: 2.939882041s sec
+AVG Throughput: 340149.7019451333 ops/sec
+
+Timestamp: Instant { tv_sec: 73429, tv_nsec: 361555708 }
+Name : "fillrandom"
+Count: 1000000
+Duration: 2 secs
+p50:   2 us
+p95:   3 us
+p99:   5 us
+p99.9: 9 us
+Max:   5907 us
+
+Cuendillar Benchmark Report
+===========================
+General Report
+Total Ops: 1000000
+Total Runtime: 1.792608042s sec
+AVG Throughput: 557846.4318860844 ops/sec
+
+Timestamp: Instant { tv_sec: 73473, tv_nsec: 10295208 }
+Name : "readrandom"
+Count: 1000000
+Duration: 1 secs
+p50:   2 us
+p95:   3 us
+p99:   3 us
+p99.9: 4 us
+Max:   211 us
+
+
+// For 50M keys
+
+Cuendillar Benchmark Report
+===========================
+General Report
+Total Ops: 50000000
+Total Runtime: 168.074965208s sec
+AVG Throughput: 297486.30284184706 ops/sec
+
+Timestamp: Instant { tv_sec: 73690, tv_nsec: 257069916 }
+Name : "fillrandom"
+Count: 50000000
+Duration: 168 secs
+p50:   3 us
+p95:   3 us
+p99:   6 us
+p99.9: 23 us
+Max:   340735 us
+
+Cuendillar Benchmark Report
+===========================
+General Report
+Total Ops: 1000000
+Total Runtime: 77.296596916s sec
+AVG Throughput: 12937.180159260091 ops/sec
+
+Timestamp: Instant { tv_sec: 74300, tv_nsec: 264393750 }
+Name : "readrandom"
+Count: 1000000
+Duration: 77 secs
+p50:   103 us
+p95:   144 us
+p99:   162 us
+p99.9: 211 us
+Max:   7719 us
+
+// FOR 100M keys
+
+Cuendillar Benchmark Report
+===========================
+General Report
+Total Ops: 100000000
+Total Runtime: 336.824363209s sec
+AVG Throughput: 296890.6377415159 ops/sec
+
+Timestamp: Instant { tv_sec: 75193, tv_nsec: 865417333 }
+Name : "fillrandom"
+Count: 100000000
+Duration: 336 secs
+p50:   3 us
+p95:   3 us
+p99:   6 us
+p99.9: 20 us
+Max:   243199 us
+
+
+Cuendillar Benchmark Report
+===========================
+General Report
+Total Ops: 1000000
+Total Runtime: 96.929968125s sec
+AVG Throughput: 10316.726801255203 ops/sec
+
+Timestamp: Instant { tv_sec: 76463, tv_nsec: 121288791 }
+Name : "readrandom"
+Count: 1000000
+Duration: 96 secs
+p50:   105 us
+p95:   143 us
+p99:   161 us
+p99.9: 225 us
+Max:   14543 us
+
+
+// CONFIG used
+root_dir = "./table"
+sstable_root_dir = "./table/sstable"
+
+[wal]
+variant = "default"
+wal_dir = "./table/wal"
+wal_sync_variant = "nosync"
+wal_group_sync_size = 100
+wal_file_size_in_bytes = 100_000_000
+wal_max_payload_len_in_bytes = 1000_000 # 1 MB
+
+[memtable]
+variant = "btree"
+manager_variant = "default"
+max_memtable_size_in_mega_bytes = 64
+
+
+[bloom]
+variant = "default"
+bits_per_key = 10
+
+[index]
+variant = "default"
+index_block_min_size = 4096
+
+
+[compaction]
+root_dir = "./table/sstable"
+compaction_interval = 5
+min_l0_file_count = 3
+max_l0_file_count_per_cycle = 120 # This should be according to the avaiable memory as all entries will be in the memory
+variant = "leveled"
+base_entries_per_table = 1000_00
+level_entries_growth_factor = 4
+level_size_growth_factor = 4
+level_base_size = 320_000_000     # it should be atleast equal to the memtable size
+max_level_count = 5
+
+[cleaning]
+root_dir = "./table/sstable"
+cleaning_interval = 10
+
+[version_manager]
+version_manager_sync_mode = "nosync"

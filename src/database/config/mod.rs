@@ -118,6 +118,7 @@ impl DbConfig {
                 root_dir: sstable_root_dir.into(),
                 compaction_interval: 100,
                 min_l0_file_count: 3,
+                max_l0_file_count_per_cycle: 10,
                 variant: CompactionVariant::Leveled,
                 base_entries_per_table: 100,
                 level_entries_growth_factor: 4,

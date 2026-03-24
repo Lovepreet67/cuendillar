@@ -1,5 +1,4 @@
 use std::{
-    cmp::max,
     collections::HashSet,
     fs::{File, create_dir_all},
     io::Write,
@@ -304,7 +303,8 @@ impl Compaction for LevelCompaction {
         let mut merged_enteries = version
             .get_level_tables(0)
             .unwrap()
-            .into_iter()
+            .iter()
+            .take(self.config.max_l0_file_count_per_cycle)
             .rev()
             .map(|table| {
                 compaction_update.add_operation(Del {
@@ -377,7 +377,8 @@ impl Compaction for LevelCompaction {
                     id: poped_table.id,
                 });
                 merged_enteries = poped_table.item_list()?;
-                let mut tables_to_be_poped = max(6 - i, 2);
+                // we try to move half data we added to the next level
+                let mut tables_to_be_poped = new_li_meta.len() / 2;
                 while !new_li_meta.is_empty() && tables_to_be_poped > 0 {
                     let poped_table = new_li_meta.pop().unwrap();
                     compaction_update.add_operation(Del {

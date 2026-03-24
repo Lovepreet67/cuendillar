@@ -56,6 +56,8 @@ pub struct CompactionConfig {
     /// Once the number of L0 files exceeds this threshold,
     /// a compaction into L1 will be scheduled.
     pub min_l0_file_count: usize,
+    /// Maximum number of files in **Level 0 (L0)** which will be taken out from L0 during compaction start
+    pub max_l0_file_count_per_cycle: usize,
     /// Base number of entries in table it will be equal to the number of entries
     /// in table in L0 level
     /// this number will grow based on growth factor

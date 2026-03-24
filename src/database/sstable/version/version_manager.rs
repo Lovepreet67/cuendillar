@@ -19,10 +19,7 @@ use crate::database::{
             SSTMetadata, SSTableFooter, SSTableKeyRange, bloom_filter::bloom_factory::BloomFactory,
             index::index_factory::IndexFactory,
         },
-        version::{
-            Version,
-            version_update::{VersionOperation, VersionUpdate},
-        },
+        version::{Version, version_update::VersionUpdate},
     },
     wal::WAL,
 };
@@ -284,37 +281,12 @@ impl VersionManager {
         Ok(sst_meta)
     }
 
-    pub fn push_version_update(&mut self, update: VersionUpdate) -> Result<(), SSTableError> {
+    pub fn push_version_update(&mut self, mut update: VersionUpdate) -> Result<(), SSTableError> {
         let mut buff = vec![];
         update.encode(&mut buff)?;
         self.version_wal.append_log(&buff)?;
         let mut updated_version = (*self.version).clone();
-        let deleted_files: Vec<_> = update
-            .operations
-            .iter()
-            .filter(|op| {
-                matches!(
-                    op,
-                    VersionOperation::Del {
-                        level: _level,
-                        id: _id
-                    }
-                )
-            })
-            .map(|op| {
-                match op {
-                    VersionOperation::Del { level, id } => self
-                        .root_dir
-                        .join(format!("l{}", level))
-                        .join(id.to_string()),
-                    _ => {
-                        // this will not happen
-                        panic!("Filter is not working broken")
-                    }
-                }
-            })
-            .collect();
-
+        let deleted_files = std::mem::take(&mut update.files_to_be_deleted);
         updated_version.apply_update(update)?;
 
         let old_version = std::mem::replace(&mut self.version, Arc::new(updated_version));

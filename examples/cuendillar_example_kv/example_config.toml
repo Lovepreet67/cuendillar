@@ -1,0 +1,44 @@
+# Isolated paths for the demo CLI — run the binary from this directory (examples/cuendillar_example_kv)
+# or set CONFIG_PATH to this file’s absolute path.
+
+root_dir = "./data/cuendillar_demo"
+sstable_root_dir = "./data/cuendillar_demo/sstable"
+
+[wal]
+variant = "default"
+wal_dir = "./data/cuendillar_demo/wal"
+wal_sync_variant = "nosync"
+wal_file_size_in_bytes = 1048576
+wal_max_payload_len_in_bytes = 65536
+
+[memtable]
+variant = "btree"
+manager_variant = "default"
+max_memtable_size_in_mega_bytes = 16
+
+[bloom]
+variant = "default"
+bits_per_key = 10
+
+[index]
+variant = "default"
+index_block_min_size = 2048
+
+[compaction]
+root_dir = "./data/cuendillar_demo/sstable"
+compaction_interval = 300
+min_l0_file_count = 4
+max_l0_file_count_per_cycle = 32
+variant = "leveled"
+base_entries_per_table = 5000
+level_entries_growth_factor = 4
+level_size_growth_factor = 4
+level_base_size = 20000000
+max_level_count = 5
+
+[cleaning]
+root_dir = "./data/cuendillar_demo/sstable"
+cleaning_interval = 100
+
+[version_manager]
+version_manager_sync_mode = "nosync"

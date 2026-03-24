@@ -266,11 +266,11 @@ impl Drop for Engine {
     #[instrument(name="Engine Stop",skip(self))]
     fn drop(&mut self) {
         info!("Stoping Engine....");
-        self.under_shutdown
-            .store(true, std::sync::atomic::Ordering::Relaxed);
         // we will first fetch the compaction and cleaner workers
         let compaction_worker =  self.workers.pop();
         let cleaner_worker = self.workers.pop();
+         self.under_shutdown
+            .store(true, std::sync::atomic::Ordering::Relaxed);
 
         // first we let all the workers to push memtables
         while let Some(worker) = self.workers.pop() {
@@ -283,7 +283,7 @@ impl Drop for Engine {
             compaction_worker.join().expect("Error while joining compaction thread");
         }
         // then we will wait for 30 secs so that cleaner can do its job 
-        // sleep(Duration::from_secs(30));
+        // sleep(Duration::from_millis(self.config.cleaning.cleaning_interval as u64*10));
         if let Some(clearner_worker) = cleaner_worker{
             info!("Waiting for cleaner to stop");
             clearner_worker.join().expect("Error while joining the cleaner thread");

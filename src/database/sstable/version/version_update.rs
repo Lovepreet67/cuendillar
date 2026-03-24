@@ -1,4 +1,7 @@
-use std::io::{Read, Write};
+use std::{
+    io::{Read, Write},
+    path::PathBuf,
+};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
@@ -82,6 +85,8 @@ impl VersionOperation {
 pub struct VersionUpdate {
     pub wal_offset: u64,
     pub operations: Vec<VersionOperation>,
+    // This will be filled while normalizing the version update
+    pub files_to_be_deleted: Vec<PathBuf>,
 }
 
 impl VersionUpdate {
@@ -89,6 +94,7 @@ impl VersionUpdate {
         Self {
             wal_offset,
             operations: Vec::new(),
+            files_to_be_deleted: Vec::new(),
         }
     }
     pub fn add_operation(&mut self, op: VersionOperation) {
@@ -122,6 +128,7 @@ impl VersionUpdate {
         let mut update = Self {
             wal_offset,
             operations: vec![],
+            files_to_be_deleted: Vec::new(),
         };
         for _i in 0..op_count {
             match VersionOperation::decode(reader) {
@@ -137,5 +144,8 @@ impl VersionUpdate {
             }
         }
         Ok(update)
+    }
+    pub fn mark_file_to_be_deleted(&mut self, file: PathBuf) {
+        self.files_to_be_deleted.push(file);
     }
 }
