@@ -1,5 +1,4 @@
 use std::{
-    cmp::max,
     collections::HashSet,
     fs::{File, create_dir_all},
     io::Write,

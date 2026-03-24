@@ -40,7 +40,6 @@ Key components include:
 - Sorted iteration and range scans
 - Background compaction and cleaning
 - Configurable LSM-tree layout
-- RocksDB-style benchmarking support
 
 ---
 
@@ -199,7 +198,7 @@ Public types and methods on **`Database`** and the re-exports listed above are t
 
 ## Example application (path dependency)
 
-The workspace member **`examples/cuendillar_example_kv`** is an **interactive `kv>` shell** (and optional one-shot subcommands) that depends on **`cuendillar`** like an external crate (`path = "../.."`). It covers config loading, CRUD, scans, and bulk load. See [`/examples/cuendillar_example_kv/README.md`](/examples/cuendillar_example_kv/README.md).
+The workspace member **`examples/cuendillar_example_kv`** is an **interactive `kv>` shell** (and optional one-shot subcommands) that depends on **`cuendillar`** like an external crate (`path = "../.."`). It covers config loading, CRUD and scans. See [`/examples/cuendillar_example_kv/README.md`](/examples/cuendillar_example_kv/README.md).
 
 ## Benchmarks
 
@@ -297,5 +296,5 @@ examples/            # Demo applications
 - Configuration guide → [`docs/CONFIG_TUNING.md`](./docs/CONFIG_TUNING.md)
 - Benchmark details → [`docs/BENCHMARK.md`](./docs/BENCHMARK.md)
 - Benchmark Snapshot → [`BENCHMARK.md`](BENCHMARK.md)
-- RocksDB comparison → [`docs/ROCKS_DB_BENCHMARK.md`](./docs/ROCKS_DB_BENCHMARK.md)
-- Integration tests → [`docs/DB_ENGINE_INTEGRATION_TEST.md`](./docs/DB_ENGINE_INTEGRATION_TEST.md)
+- RocksDB Benchmarks → [`docs/ROCKS_DB_BENCHMARK.md`](./docs/ROCKS_DB_BENCHMARK.md)
+- Integration tests → [`docs/DB_ENGINE_INTEGERATION_TEST.md`](./docs/DB_ENGINE_INTEGERATION_TEST.md)
