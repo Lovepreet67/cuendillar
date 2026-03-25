@@ -81,7 +81,7 @@ pub fn db_test() {
         }
     };
 
-    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "100k".to_owned());
+    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "sample".to_owned());
     let active_workload_file = format!("workload/{}.txt", active_workload);
     println!("Active workload is set to {}", active_workload);
     run_workload(&mut db, &active_workload_file);
@@ -107,7 +107,7 @@ pub fn db_controlled_recovery_test() {
             panic!("{:?}", e)
         }
     };
-    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "100k".to_owned());
+    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "sample".to_owned());
     let active_workload_file = format!("workload/{}.txt", active_workload);
     println!("Active workload is set to {}", active_workload);
     let file = File::open(active_workload_file).unwrap();
@@ -137,7 +137,7 @@ pub fn db_iterator_full_scan_test() {
 
     let db = Database::new(config.clone()).unwrap();
 
-    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "100k".to_owned());
+    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "sample".to_owned());
     let active_workload_file = format!("workload/{}.txt", active_workload);
 
     println!("Active workload is set to {}", active_workload);
@@ -206,7 +206,7 @@ pub fn db_iterator_range_test() {
     let config = DbConfig::get_config().unwrap();
     let db = Database::new(config.clone()).unwrap();
 
-    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "100k".to_owned());
+    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "sample".to_owned());
     let active_workload_file = format!("workload/{}.txt", active_workload);
 
     let file = File::open(&active_workload_file).unwrap();

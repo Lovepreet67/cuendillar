@@ -2,6 +2,24 @@
 name = "cuendillar"
 version = "0.1.0"
 edition = "2024"
+description = "Embedded persistent key–value storage engine (LSM-tree based)"
+license = "MIT"
+repository = "https://github.com/Lovepreet67/cuendillar"
+documentation = "https://docs.rs/cuendillar"
+readme = "README.md"
+keywords = ["database", "kv-store", "lsm", "storage", "embedded"]
+categories = ["database-implementations", "kv-store"]
+include = [
+    "src/**/*",
+    "benches/**/*",
+    "tests/**/*",
+    "LICENSE",
+    "README.md",
+    "Cargo.toml",
+    "workload/sample.txt",
+    "default_config.toml",
+]
+
 
 [dependencies]
 byteorder = "1.5.0"
@@ -40,4 +58,4 @@ harness = false
 debug = true
 
 [profile.release]
-debug = true
+debug = false

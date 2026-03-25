@@ -8,4 +8,4 @@ publish = false
 [dependencies]
 anyhow = "1.0.102"
 clap = { version = "4.6.0", features = ["derive", "env"] }
-cuendillar = { path = "../.." }
+cuendillar = "0.1.0"

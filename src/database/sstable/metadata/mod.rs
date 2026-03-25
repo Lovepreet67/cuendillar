@@ -205,7 +205,7 @@ impl SSTMetadata {
         }
         return Ok(None);
     }
-
+    #[allow(dead_code)]
     pub fn item_list(&self) -> Result<Vec<OwnedEntry>, SSTableError> {
         let reader = File::options().read(true).open(&self.file_path)?;
         // we will limit the reader to data block only
