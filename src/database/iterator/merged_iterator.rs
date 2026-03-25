@@ -53,7 +53,7 @@ impl MergedIterator {
                         self.last_entry = Some(existing)
                     }
                 }
-                (None, Some(new)) => self.first_entry = Some(new.into()),
+                (None, Some(new)) => self.last_entry = Some(new.into()),
                 _ => {
                     // This case will not happen so we will not do anything
                 }

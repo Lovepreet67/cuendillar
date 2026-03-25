@@ -236,7 +236,7 @@ fn main() {
         .with_env_filter("debug")
         .try_init()
         .unwrap();
-    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "10k".to_owned());
+    let active_workload = std::env::var("ACTIVE_WORKLOAD").unwrap_or_else(|_| "sample".to_owned());
     let active_workload_file = format!("workload/{}.txt", active_workload);
     run(&active_workload, &active_workload_file);
 }

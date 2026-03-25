@@ -3,13 +3,12 @@ use std::{
     fmt::Debug,
     fs::File,
     io::{BufReader, Cursor, Read, Take, Write},
-    os::unix::fs::FileExt,
     path::PathBuf,
     sync::{Arc, OnceLock},
 };
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use tracing::error;
+use tracing::warn;
 
 use crate::database::{
     OwnedEntry,
@@ -27,6 +26,42 @@ thread_local! {
 
 pub mod bloom_filter;
 pub mod index;
+
+// Utilitly function to handle the cross platform behavour
+
+fn read_exact_at(file: &std::fs::File, mut offset: u64, mut buf: &mut [u8]) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::FileExt;
+        file.read_exact_at(buf, offset)
+    }
+    #[cfg(windows)]
+    {
+        use std::io::{self, ErrorKind};
+        use std::os::windows::fs::FileExt;
+
+        let file = file.try_clone()?;
+
+        while !buf.is_empty() {
+            match file.seek_read(buf, offset) {
+                Ok(0) => {
+                    return Err(io::Error::new(
+                        ErrorKind::UnexpectedEof,
+                        "failed to fill whole buffer",
+                    ));
+                }
+                Ok(n) => {
+                    let tmp = buf;
+                    buf = &mut tmp[n..];
+                    offset += n as u64;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        Ok(())
+    }
+}
 
 // SSTable Footer will be of fixed size
 // 8+8+8 = 32 bytes
@@ -191,7 +226,7 @@ impl SSTMetadata {
                 }
                 buf.resize(size, 0); // ensures length is correct
                 let reader = self.file.get().expect("File Should always there");
-                reader.read_exact_at(&mut buf, block_offset.start)?;
+                read_exact_at(&reader, block_offset.start, &mut buf)?;
                 let mut reader = Cursor::new(&buf[..]);
                 while let Ok(entry) = OwnedEntry::decode(&mut reader) {
                     if key == entry.get_key() {
@@ -205,7 +240,7 @@ impl SSTMetadata {
         }
         return Ok(None);
     }
-
+    #[allow(dead_code)]
     pub fn item_list(&self) -> Result<Vec<OwnedEntry>, SSTableError> {
         let reader = File::options().read(true).open(&self.file_path)?;
         // we will limit the reader to data block only
@@ -270,7 +305,10 @@ impl SSTIterator {
         match OwnedEntry::decode(reader) {
             Ok(v) => Some(v),
             Err(e) => {
-                error!("Error while reading entry during sstable iteration {:?}", e);
+                warn!(
+                    "Noramal behaviour: Error while reading entry during sstable iteration {:?} so we will be taking this as termination",
+                    e
+                );
                 return None;
             }
         }
