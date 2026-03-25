@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  ACTIVE_WORKLOAD: 100k
 
 jobs:
   build:
