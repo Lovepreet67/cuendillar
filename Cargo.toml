@@ -8,7 +8,7 @@ repository = "https://github.com/Lovepreet67/cuendillar"
 documentation = "https://docs.rs/cuendillar"
 readme = "README.md"
 keywords = ["database", "kv-store", "lsm", "storage", "embedded"]
-categories = ["database-implementations", "kv-store"]
+categories = ["database-implementations"]
 include = [
     "src/**/*",
     "benches/**/*",
